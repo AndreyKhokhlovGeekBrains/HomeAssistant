@@ -265,20 +265,4 @@ script:
                 target:
                   entity_id: light.nochnik
 
-  andrey_i_am_home:
-    alias: "Andrey: I am home"
-    mode: single
-    sequence:
-      - service: input_boolean.turn_on
-        target:
-          entity_id: input_boolean.andrey_manual_presence
-
-  andrey_i_am_away:
-    alias: "Andrey: I am away"
-    mode: single
-    sequence:
-      - service: input_boolean.turn_off
-        target:
-          entity_id: input_boolean.andrey_manual_presence
-
 # *** *** *** *** *** *** ***

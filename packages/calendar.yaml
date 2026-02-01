@@ -6,16 +6,50 @@ automation:
     trigger:
       # 1) Normal case — fire 1 minute before event starts
       - platform: calendar
+        id: cal_start_minus_1m
         entity_id: calendar.google_ics
         event: start
         offset: "-00:01:00"
 
       # 2) Fallback — if calendar loaded late and immediately became "on"
       - platform: state
+        id: cal_state_on_fallback
         entity_id: calendar.google_ics
         to: "on"
+        for: "00:00:05"
 
     action:
+      - service: logbook.log
+        data:
+          name: "Calendar announce"
+          message: >-
+            Triggered by {{ trigger.id }} (platform={{ trigger.platform }}),
+            cal_start={{ state_attr('calendar.google_ics','start_time') }},
+            now={{ now().strftime('%Y-%m-%d %H:%M:%S') }}
+
+      # Anti-duplicate guard: ignore the "to: on" fallback if we already ran recently
+      - condition: template
+        value_template: >-
+          {{
+            trigger.platform != 'state'
+            or this.attributes.last_triggered is none
+            or (as_timestamp(now()) - as_timestamp(this.attributes.last_triggered)) > 90
+          }}
+
+      # Fallback guard: allow state-trigger only if the event start_time is "now-ish"
+      - condition: template
+        value_template: >-
+          {{
+            trigger.platform != 'state'
+            or (
+              state_attr('calendar.google_ics', 'start_time') is not none
+              and (
+                as_timestamp(state_attr('calendar.google_ics', 'start_time'))
+                - as_timestamp(now())
+              ) | abs < 90
+            )
+          }}
+
       # Common variables: event text, start time, TTS volume, previous volume
       - variables:
           cal_msg: >
@@ -103,6 +137,16 @@ automation:
 
           # Extra 10 minutes after arrival
           - delay: "00:10:00"
+
+          # Skip if the event is too old by the time you got home
+          - condition: template
+            value_template: >-
+              {% set st = cal_start %}
+              {% if not st %}
+                false
+              {% else %}
+                {{ (as_timestamp(now()) - as_timestamp(st)) < 1800 }}
+              {% endif %}
 
           # Was the player playing at the announcement moment?
           - variables:

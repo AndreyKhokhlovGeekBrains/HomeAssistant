@@ -1,6 +1,5 @@
 # Lighting automations.
 # Includes intent-based control via Alice IR scenes.
-
 automation:
   - id: request_turn_off_ceiling_light_when_away
     alias: "Request ceiling light OFF when Andrey away"
