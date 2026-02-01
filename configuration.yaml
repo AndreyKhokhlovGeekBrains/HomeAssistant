@@ -1,0 +1,32 @@
+# =========================
+# Home Assistant - configuration.yaml
+# (prepared for packages structure)
+# =========================
+
+# 01) Base integrations and themes
+default_config:
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+# 02) Enable packages (modular structure)
+homeassistant:
+  packages: !include_dir_named packages # <— all new logic will live in /config/packages/
+  allowlist_external_dirs:
+    - /config/www
+    - /config/www/pics
+
+
+# 03) Split common YAMLs (kept as-is)
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# 05) TTS (kept)
+tts:
+  - platform: google_translate
+    service_name: google_say_ru
+    language: "ru"
+  - platform: google_translate
+    service_name: google_say_en
+    language: "en"

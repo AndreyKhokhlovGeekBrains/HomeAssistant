@@ -1,0 +1,85 @@
+automation:
+  - id: aroma_lock_started
+    alias: "Aroma • Lock started → stop purifier & exhaust"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: timer.aroma_lock
+        to: "active"
+    action:
+      # Turn off exhaust fan
+      - service: switch.turn_off
+        target:
+          entity_id: switch.kitchen_exhaust_fan
+
+      # Power off Philips purifier (hard off)
+      - service: switch.turn_off
+        target:
+          entity_id: switch.philips_air_purifier_power
+
+  - id: aroma_lock_ended_restore_philips
+    alias: "Aroma • Lock ended → restore Philips Auto"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: timer.aroma_lock
+        to: "idle"
+    action:
+      # Power on Philips (it was hard-off during aroma)
+      - service: switch.turn_on
+        target:
+          entity_id: switch.philips_air_purifier_power
+
+      # Restore Philips to Auto
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.philips_air_purifier
+        data:
+          preset_mode: "auto"
+          
+script:
+  aroma_start:
+    alias: "Aroma • Start (voice)"
+    mode: single
+    sequence:
+      - service: timer.start
+        target:
+          entity_id: timer.aroma_lock
+
+  aroma_end_vent_restore_async:
+    alias: "Aroma • End + vent 10m + restore (async)"
+    mode: restart
+    sequence:
+      # Run only if aroma lock is active
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "active"
+
+      # Unlock aroma mode
+      - service: timer.cancel
+        target:
+          entity_id: timer.aroma_lock
+
+      # Ventilate for 10 minutes (runs inside this script)
+      - service: switch.turn_on
+        target:
+          entity_id: switch.kitchen_exhaust_fan
+      - delay: "00:10:00"
+      - service: switch.turn_off
+        target:
+          entity_id: switch.kitchen_exhaust_fan
+
+      # Restore Philips to Auto (power on if needed)
+      # - service: switch.turn_on
+      #   target:
+      #     entity_id: switch.philips_air_purifier_power
+
+      # Give the device time to boot
+      # - delay: "00:00:02"
+      
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.philips_air_purifier
+        data:
+          preset_mode: "auto"
+

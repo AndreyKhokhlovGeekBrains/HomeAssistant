@@ -1,0 +1,348 @@
+automation:
+  - id: morning_routine_nochnik_radio_weather
+    alias: "Morning routine • Night light → weather + radio + reminder"
+    mode: single
+
+    trigger:
+      # Night light is turned on and stays on for at least 5 minutes
+      - platform: state
+        entity_id: light.nochnik
+        to: "on"
+        for: "00:05:00"
+        # for: "00:00:05"
+
+    condition:
+      # Only in the morning between 06:00 and 12:00
+      - condition: time
+        after: "06:00:00"
+        # after: "00:00:00"
+        before: "12:00:00"
+        # before: "23:00:00"
+
+      # Run only once per day
+      - condition: template
+        value_template: >
+          {% set last = state_attr('automation.morning_routine_nochnik_radio_weather', 'last_triggered') %}
+          {{ last is none or (as_datetime(last)).date() < now().date() }}
+
+    action:
+      # 0) If aroma lock is active — run async vent/restore script
+      - if:
+          - condition: state
+            entity_id: timer.aroma_lock
+            state: "active"
+        then:
+          - service: script.turn_on
+            target:
+              entity_id: script.aroma_end_vent_restore_async
+
+      # 1) Получаем hourly forecast
+      - service: weather.get_forecasts
+        target:
+          entity_id: weather.openweathermap
+        data:
+          type: hourly
+        response_variable: owm_forecast
+
+      # 2) Set TTS volume using the global helper
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ states('input_number.tts_volume_default') | float }}"
+
+      # 3) Build morning weather message into a variable (_msg_morning)
+      - variables:
+          _msg_morning: >
+            {# --- Current conditions from met.no --- #}
+            {% set temp = state_attr('weather.forecast_home', 'temperature') %}
+            {% set cond = states('weather.forecast_home') | lower %}
+            {% set wind = state_attr('weather.forecast_home', 'wind_speed') %}
+            {% set wind_unit = state_attr('weather.forecast_home', 'wind_speed_unit') | default('km/h') %}
+
+            {# --- Hourly forecast from OpenWeatherMap (response_variable: owm_forecast) --- #}
+            {% set hours_ahead = 3 %}
+            {% set fc_root =
+                owm_forecast['weather.openweathermap']
+                if owm_forecast is defined
+                   and 'weather.openweathermap' in owm_forecast
+                else None %}
+            {% set fc_all =
+                fc_root['forecast']
+                if fc_root is not none
+                   and 'forecast' in fc_root
+                else [] %}
+            {% set fc = fc_all[:hours_ahead] %}
+
+            {# Flags for next 3 hours #}
+            {% set rain_soon =
+              (fc | selectattr('condition','in',['rainy','pouring','lightning-rainy']) | list | count > 0)
+            %}
+            {% set snow_soon =
+              (fc | selectattr('condition','in',['snowy','snowy-rainy']) | list | count > 0)
+            %}
+            {% set heavy_snow_soon =
+              (fc | selectattr('condition','eq','snowy') | selectattr('precipitation','ge',1) | list | count > 0)
+              or (fc | selectattr('condition','eq','snowy-rainy') | selectattr('precipitation','ge',1) | list | count > 0)
+            %}
+            {% set strong_wind_soon =
+              (fc | selectattr('wind_speed','ge',40) | list | count > 0)
+            %}
+            {% set storm_soon =
+              (fc | selectattr('wind_speed','ge',70) | list | count > 0)
+              or (fc | selectattr('wind_gust_speed','ge',70) | list | count > 0)
+            %}
+
+            {# Max forecast wind in next hours (for voice) #}
+            {% set wind_list = fc | map(attribute='wind_speed') | list %}
+            {% set max_wind =
+              (wind_list | max)
+              if wind_list is not none and (wind_list | length > 0)
+              else none
+            %}
+
+            {# Strong frost now (based on current temp) #}
+            {% set strong_frost_now = temp is number and temp <= -15 %}
+
+            Good morning.
+
+            {# --- Current temperature --- #}
+            {% if temp is number %}
+              Current temperature is about {{ temp | round(0) }} degrees.
+            {% else %}
+              Current temperature is unknown.
+            {% endif %}
+
+            {# --- Current general condition --- #}
+            The weather is {{ cond | default('unknown') }}.
+
+            {# --- Current wind --- #}
+            {% if wind is number %}
+              Wind speed is around {{ wind | round(0) }} {{ wind_unit }}.
+            {% endif %}
+
+            {# --- Strong frost warning (now) --- #}
+            {% if strong_frost_now %}
+              Warning: it is very cold outside (around {{ temp | round(0) }} degrees or lower).
+              Please dress very warmly.
+            {% endif %}
+
+            {# --- Rain / snow in the next 3 hours --- #}
+            {% if rain_soon %}
+              Rain is expected within the next {{ hours_ahead }} hours.
+              You may want to take an umbrella.
+            {% endif %}
+
+            {% if snow_soon %}
+              Snow is expected within the next {{ hours_ahead }} hours.
+            {% endif %}
+
+            {% if heavy_snow_soon %}
+              Warning: heavy snow is possible in the next {{ hours_ahead }} hours.
+              Be careful on the roads and outside.
+            {% endif %}
+
+            {# --- Wind alerts in the next 3 hours --- #}
+            {% if storm_soon and max_wind is not none %}
+              Warning: very strong wind is expected soon (up to about {{ max_wind | round(0) }} {{ wind_unit }}).
+              Be careful outside.
+            {% elif strong_wind_soon and max_wind is not none %}
+              Note: strong wind is expected soon (up to about {{ max_wind | round(0) }} {{ wind_unit }}).
+              Dress warmer and be careful outside.
+            {% endif %}
+
+      # 4) Say the built message
+      - service: script.say_auto_lang
+        data:
+          entity_id: media_player.galaxy_a5_2017
+          message: "{{ _msg_morning }}"
+
+      # 4.1) Dynamic delay based on TTS message length
+      - service: script.tts_wait_by_text
+        data:
+          message: "{{ _msg_morning }}"
+
+      # 5) Morning station is always Absolute Chillout
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.radio_station
+        data:
+          option: "Absolute Chillout"
+
+      # 6) Set radio start volume using the global helper
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ states('input_number.radio_start_volume_default') | float }}"
+
+      # 7) Dynamic delay based on TTS message length
+      # - delay:
+      #     seconds: >-
+      #       {% set chars = _msg_morning | length %}
+      #       {% set cps = 10 %}
+      #       {% set base = (chars / cps) | round(0, 'ceil') + 2 %}
+      #       {% set min_sec = 6 %}
+      #       {% set max_sec = 35 %}
+      #       {{ [min_sec, [base, max_sec] | min] | max }}
+
+      # 8) Start radio for the morning (URL from current input_select)
+      - service: script.radio_play_current
+
+      # 9) Wait while the radio is playing (45 minutes)
+      - delay: "00:43:00"
+      # - delay: "00:00:30"
+
+      # 10) Fade-out radio volume using default helpers
+      - variables:
+          _fade_start: "{{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.3) }}"
+          _fade_steps: "{{ states('input_number.radio_fade_steps_default') | int }}"
+          _fade_delay: "{{ states('input_number.radio_fade_step_delay_default') | int }}"
+
+      - repeat:
+          count: "{{ _fade_steps }}"
+          sequence:
+            - service: media_player.volume_set
+              target:
+                entity_id: media_player.galaxy_a5_2017
+              data:
+                volume_level: >
+                  {% set start = _fade_start | float %}
+                  {% set steps = _fade_steps | float %}
+                  {% set idx = repeat.index | float %}
+                  {% set val = start * (1 - (idx / steps)) %}
+                  {{ [val, 0] | max }}   {# берём максимум между val и 0, чтобы не уйти в минус #}
+
+            - delay:
+                seconds: "{{ _fade_delay }}"
+
+      # 11) Fully stop radio after fade-out
+      - service: media_player.media_stop
+        target:
+          entity_id: media_player.galaxy_a5_2017
+
+      # 12) Restore TTS volume after radio fade-out
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ states('input_number.tts_volume_default') | float }}"
+
+      # 13) Final friendly reminder before leaving home
+      - variables:
+          _msg_final: >
+            {# --- Current conditions from met.no --- #}
+            {% set temp = state_attr('weather.forecast_home', 'temperature') %}
+            {% set cond = states('weather.forecast_home') | lower %}
+            {% set wind_now = state_attr('weather.forecast_home', 'wind_speed') %}
+            {% set wind_unit = state_attr('weather.forecast_home', 'wind_speed_unit') | default('km/h') %}
+
+            {# --- Daily forecast from OpenWeatherMap (same response_variable: owm_forecast) --- #}
+            {% set hours_day = 24 %}
+            {% set fc_root =
+                owm_forecast['weather.openweathermap']
+                if owm_forecast is defined
+                   and 'weather.openweathermap' in owm_forecast
+                else None %}
+            {% set fc_all =
+                fc_root['forecast']
+                if fc_root is not none
+                   and 'forecast' in fc_root
+                else [] %}
+            {% set fc_day = fc_all[:hours_day] %}
+
+            {# --- Flags for the whole day --- #}
+            {% set rain_today =
+              (fc_day | selectattr('condition','in',['rainy','pouring','lightning-rainy']) | list | count > 0)
+            %}
+            {% set snow_today =
+              (fc_day | selectattr('condition','in',['snowy','snowy-rainy']) | list | count > 0)
+            %}
+            {% set heavy_snow_today =
+              (fc_day | selectattr('condition','eq','snowy') | selectattr('precipitation','ge',1) | list | count > 0)
+              or (fc_day | selectattr('condition','eq','snowy-rainy') | selectattr('precipitation','ge',1) | list | count > 0)
+            %}
+
+            {% set temps_day = fc_day | map(attribute='temperature') | list %}
+            {% set strong_frost_now = temp is number and temp <= -15 %}
+            {% set strong_frost_day =
+              (temps_day | select('le', -15) | list | count > 0)
+              if temps_day is not none and (temps_day | length > 0)
+              else false
+            %}
+
+            {% set wind_list_day = fc_day | map(attribute='wind_speed') | list %}
+            {% set max_wind_day =
+              (wind_list_day | max)
+              if wind_list_day is not none and (wind_list_day | length > 0)
+              else none
+            %}
+            {% set strong_wind_today =
+              (wind_list_day | select('ge', 40) | list | count > 0)
+              if wind_list_day is not none and (wind_list_day | length > 0)
+              else false
+            %}
+            {% set storm_today =
+              (wind_list_day | select('ge', 70) | list | count > 0)
+              if wind_list_day is not none and (wind_list_day | length > 0)
+              else false
+            %}
+
+            {# --- 1) Clothes / temperature and frost --- #}
+            {% if temp is number %}
+              It is about {{ temp | round(0) }} degrees outside now.
+            {% else %}
+              Current temperature is unknown.
+            {% endif %}
+
+            {% if strong_frost_now %}
+              It is very cold outside now (around {{ temp | round(0) }} degrees or lower).
+              Dress very warmly.
+            {% elif strong_frost_day and not strong_frost_now %}
+              Today very low temperatures are expected (down to minus fifteen degrees or below).
+              Make sure you dress warmly enough.
+            {% elif temp is number and temp <= 0 %}
+              It is cold outside.
+              Please dress warmly.
+            {% elif temp is number and temp > 0 and snow_today %}
+              It is slightly above zero now, but snow is expected today.
+              Dress warmly and choose proper shoes.
+            {% endif %}
+
+            {# --- 2) Umbrella / snow for the whole day --- #}
+            {% if rain_today %}
+              Rain is expected at some point today.
+              You may want to take an umbrella with you.
+            {% elif snow_today %}
+              Snow is expected today.
+              Be careful outside and on the roads.
+            {% endif %}
+
+            {% if heavy_snow_today %}
+              Warning: heavy snow is possible today.
+              Please plan extra time for the road and be careful.
+            {% endif %}
+
+            {# --- 3) Wind warnings for the whole day --- #}
+            {% if storm_today and max_wind_day is not none %}
+              Warning: very strong wind is expected today (up to about {{ max_wind_day | round(0) }} {{ wind_unit }}).
+              Be careful outside.
+            {% elif strong_wind_today and max_wind_day is not none %}
+              Note: strong wind is expected today (up to about {{ max_wind_day | round(0) }} {{ wind_unit }}).
+              Dress warmer and be careful outside.
+            {% endif %}
+
+            {# --- 4) Generic friendly closing if nothing special --- #}
+            {% if not rain_today and not snow_today and not strong_frost_now and not strong_frost_day
+                  and not strong_wind_today and not storm_today %}
+              Have a nice day.
+              Make sure you have everything you need before leaving home.
+            {% endif %}
+
+      - service: script.say_auto_lang
+        data:
+          entity_id: media_player.galaxy_a5_2017
+          message: "{{ _msg_final }}"
+          # message: "Final test message. Can you hear me?"
+
+# *** *** *** *** *** *** ***

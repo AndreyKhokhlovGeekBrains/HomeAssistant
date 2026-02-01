@@ -1,0 +1,115 @@
+script:
+  exhaust_reset_thresholds:
+    alias: "Exhaust • Reset thresholds to defaults"
+    mode: single
+    sequence:
+      - service: input_number.set_value
+        target: { entity_id: input_number.pm25_exhaust_on }
+        data: { value: 70 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.pm25_exhaust_off }
+        data: { value: 30 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.co2_exhaust_on }
+        data: { value: 1000 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.co2_exhaust_off }
+        data: { value: 800 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.temp_exhaust_on }
+        data: { value: 26 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.temp_exhaust_off }
+        data: { value: 24 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.voc_exhaust_on }
+        data: { value: 0.9 }
+      - service: input_number.set_value
+        target: { entity_id: input_number.voc_exhaust_off }
+        data: { value: 0.6 }
+
+automation:
+  - id: exhaust_auto_on
+    alias: "Exhaust • Auto ON (VOC always; winter-safe)"
+    mode: single
+    trigger:
+      # TVOC (works in both winter and summer)
+      - platform: template
+        value_template: >-
+          {{ states('sensor.qingping_etvoc')|float(0) / 100 >
+             states('input_number.voc_exhaust_on')|float(0.9) }}
+        for:
+          minutes: "{{ states('input_number.exhaust_on_delay_min')|int(1) }}"
+    condition:
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "idle"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.kitchen_exhaust_fan
+
+  - id: exhaust_auto_on_summer
+    alias: "Exhaust • Auto ON (PM2.5/CO2/Temp in summer only)"
+    mode: single
+    trigger:
+      # PM2.5
+      - platform: template
+        value_template: >-
+          {{ states('sensor.qingping_pm2_5')|float(0) >
+             states('input_number.pm25_exhaust_on')|float(70) }}
+        for:
+          minutes: "{{ states('input_number.exhaust_on_delay_min')|int(1) }}"
+      # CO2
+      - platform: template
+        value_template: >-
+          {{ states('sensor.qingping_co2')|float(0) >
+             states('input_number.co2_exhaust_on')|float(1000) }}
+        for:
+          minutes: "{{ states('input_number.exhaust_on_delay_min')|int(1) }}"
+      # Temperature
+      - platform: template
+        value_template: >-
+          {{ states('sensor.qingping_temperature')|float(0) >
+             states('input_number.temp_exhaust_on')|float(26) }}
+        for:
+          minutes: "{{ states('input_number.exhaust_on_delay_min')|int(1) }}"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.exhaust_winter_mode
+        state: "off"
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "idle"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.kitchen_exhaust_fan
+
+  - id: exhaust_auto_off
+    alias: "Exhaust • Auto OFF (winter: VOC only; summer: all metrics)"
+    mode: single
+    trigger:
+      - platform: template
+        value_template: >-
+          {% set winter = is_state('binary_sensor.exhaust_winter_mode', 'on') %}
+          {% set voc_ok =
+               (states('sensor.qingping_etvoc')|float(9999) / 100) <
+               (states('input_number.voc_exhaust_off')|float(0.6)) %}
+          {% if winter %}
+            {{ voc_ok }}
+          {% else %}
+            {{ (states('sensor.qingping_pm2_5')|float(9999) <
+                  states('input_number.pm25_exhaust_off')|float(30))
+               and (states('sensor.qingping_co2')|float(9999) <
+                  states('input_number.co2_exhaust_off')|float(800))
+               and (states('sensor.qingping_temperature')|float(9999) <
+                  states('input_number.temp_exhaust_off')|float(24))
+               and voc_ok }}
+          {% endif %}
+        for:
+          minutes: "{{ states('input_number.exhaust_off_delay_min')|int(1) }}"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.kitchen_exhaust_fan

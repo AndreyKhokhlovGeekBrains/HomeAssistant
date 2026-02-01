@@ -1,0 +1,14 @@
+# Очистка старых фото в папке /www/pics
+shell_command:
+  clean_old_kitchen_pics: >
+    find /config/www/pics -type f -mtime +3 -delete
+
+automation:
+  - id: clean_old_kitchen_pics_daily
+    alias: "Cleanup: delete kitchen pics older than 3 days"
+    mode: single
+    trigger:
+      - platform: time
+        at: "03:30:00"
+    action:
+      - service: shell_command.clean_old_kitchen_pics

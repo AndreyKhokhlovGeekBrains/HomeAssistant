@@ -1,0 +1,254 @@
+script:
+  radio_play_current:
+    alias: "Radio – play current station on Galaxy A5"
+    mode: restart
+    sequence:
+      # 1) Resolve URL from selected station
+      - variables:
+          url: >
+            {% set station = states('input_select.radio_station') %}
+            {% if station == 'Absolute Chillout' %}
+              https://ais-edge90-dal03.cdnstream.com/b05055_128mp3
+            {% elif station == 'Relax FM Chillout' %}
+              https://mp3channels.webradio.antenne.de/chillout
+            {% elif station == 'Радио Дача' %}
+              https://stream2.n340.com/12_dacha_64_reg_1093?type=aac&UID=CE66EE113ECE5BFEEF3C58615EBDCE83
+            {% else %}
+              https://ais-edge90-dal03.cdnstream.com/b05055_128mp3
+            {% endif %}
+
+      # 2) Start radio without touching volume
+      - service: media_player.play_media
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          media_content_id: "{{ url }}"
+          media_content_type: "audio/mp3"
+
+  radio_stop:
+    alias: "Radio – stop on Galaxy A5"
+    mode: restart
+    sequence:
+      - service: media_player.media_stop
+        target:
+          entity_id: media_player.galaxy_a5_2017
+
+  radio_toggle:
+    alias: "Radio – toggle play/stop on Galaxy A5"
+    mode: restart
+    sequence:
+      - choose:
+          # Если сейчас играет — останавливаем
+          - conditions:
+              - condition: state
+                entity_id: media_player.galaxy_a5_2017
+                state: "playing"
+            sequence:
+              - service: media_player.media_stop
+                target:
+                  entity_id: media_player.galaxy_a5_2017
+
+        # Иначе — запускаем текущую станцию
+        default:
+          - service: script.radio_play_current
+
+  radio_volume_up:
+    alias: "Radio – volume up (Galaxy A5)"
+    mode: restart
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.3) }}"
+          step: 0.05   # 5% per step
+          new: "{{ [current + step, 1] | min }}"  # clamp to 1.0
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ new }}"
+
+  radio_volume_down:
+    alias: "Radio – volume down (Galaxy A5)"
+    mode: restart
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.3) }}"
+          step: 0.05   # 5% per step
+          new: "{{ [current - step, 0] | max }}"  # clamp to 0.0
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ new }}"
+
+  radio_start_from_alice:
+    alias: "Radio • Start from Alice"
+    mode: restart
+    sequence:
+      # 1) Set radio start volume using the global helper
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ states('input_number.radio_start_volume_default') | float }}"
+
+      # 2) Start radio using your existing script
+      - service: script.radio_play_current
+
+
+automation:
+  - id: radio_autoplay_on_station_change
+    alias: "Radio • Autoplay on station change"
+    mode: restart
+
+    trigger:
+      - platform: state
+        entity_id: input_select.radio_station
+
+    action:
+      - service: script.radio_play_current
+
+# Старт sleep-таймера по кнопке ---
+  - id: radio_sleep_start_button
+    alias: "Radio • Sleep timer START"
+    mode: restart
+
+    trigger:
+      - platform: state
+        entity_id: input_button.radio_sleep_start
+
+    action:
+      - variables:
+          hours: "{{ states('input_number.radio_sleep_hours') | int(0) }}"
+          minutes: "{{ states('input_number.radio_sleep_minutes') | int(0) }}"
+          total_seconds: "{{ hours * 3600 + minutes * 60 }}"
+
+      - choose:
+          # Если время > 0 — запускаем таймер
+          - conditions:
+              - condition: template
+                value_template: "{{ total_seconds > 0 }}"
+            sequence:
+              # 1) запускаем таймер
+              - service: timer.start
+                target:
+                  entity_id: timer.radio_sleep
+                data:
+                  duration: "{{ total_seconds }}"
+
+              # 2) включаем радио ТОЛЬКО если сейчас не playing
+              - choose:
+                  - conditions:
+                      - condition: not
+                        conditions:
+                          - condition: state
+                            entity_id: media_player.galaxy_a5_2017
+                            state: "playing"
+                    sequence:
+                      - service: script.radio_play_current
+
+        # Если время = 0 — ничего не делаем (или тут можно повесить уведомление)
+
+  - id: radio_sleep_timer_finished
+    alias: "Radio • Sleep timer FINISHED → stop radio"
+    mode: single
+
+    trigger:
+      - platform: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.radio_sleep
+
+    action:
+      - service: script.radio_stop
+
+  - id: radio_sleep_reset_button
+    alias: "Radio • Sleep timer RESET (00:00)"
+    mode: single
+
+    trigger:
+      - platform: state
+        entity_id: input_button.radio_sleep_reset
+
+    action:
+      # Останавливаем таймер
+      - service: timer.cancel
+        target:
+          entity_id: timer.radio_sleep
+
+      # Сбрасываем часы и минуты
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.radio_sleep_hours
+        data:
+          value: 0
+
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.radio_sleep_minutes
+        data:
+          value: 0
+
+  - id: radio_sleep_stop_button
+    alias: "Radio • Sleep timer STOP"
+    mode: single
+
+    trigger:
+      - platform: state
+        entity_id: input_button.radio_sleep_stop
+
+    action:
+      # Просто останавливаем таймер (не сбрасываем значения часов/минут)
+      - service: timer.cancel
+        target:
+          entity_id: timer.radio_sleep
+
+  - id: radio_sleep_fade_out_last_10s
+    alias: "Radio • Sleep timer fade-out last 10s"
+    mode: restart
+
+    trigger:
+      # Запускаем логику в момент, когда таймер стал active
+      - platform: state
+        entity_id: timer.radio_sleep
+        to: "active"
+
+    variables:
+      _duration: "{{ state_attr('timer.radio_sleep', 'duration') or '0:00:00' }}"
+      total_seconds: "{{ as_timedelta(_duration).total_seconds() | int(0) }}"
+      fade_before: 10
+
+    # Имеет смысл делать fade-out только если таймер > 10 секунд
+    condition:
+      - condition: template
+        value_template: "{{ total_seconds > fade_before }}"
+
+    action:
+      # Ждём либо:
+      #  - пока таймер не станет idle/paused (Stop / Reset / естественное окончание),
+      #  - либо пока не пройдёт (total_seconds - fade_before) секунд.
+      - wait_for_trigger:
+          - platform: state
+            entity_id: timer.radio_sleep
+            to: "idle"
+          - platform: state
+            entity_id: timer.radio_sleep
+            to: "paused"
+        timeout: "{{ total_seconds - fade_before }}"
+        continue_on_timeout: true
+
+      # Если СРАБОТАЛ таймер ожидания (timeout), а НЕ триггер (idle/paused),
+      # то есть таймер всё ещё active → запускаем fade-out.
+      - if:
+          - condition: template
+            value_template: "{{ wait.completed == false and is_state('timer.radio_sleep', 'active') }}"
+        then:
+          - repeat:
+              count: 5          # 5 шагов
+              sequence:
+                # на каждом шаге проверяем, что таймер всё ещё активен
+                - condition: state
+                  entity_id: timer.radio_sleep
+                  state: "active"
+                - service: script.radio_volume_down
+                - delay: "00:00:02"
+# *** *** *** *** *** *** ***

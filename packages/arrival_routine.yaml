@@ -1,0 +1,284 @@
+automation:
+  - alias: "Andrey Home Arrival"
+    id: andrey_home_arrival
+    mode: single
+
+    trigger:
+      - id: presence
+        platform: state
+        entity_id: binary_sensor.andrey_home_final
+        from: "off"
+        to: "on"
+
+    action:
+      # 1. Свет / Tion при приходе домой
+      - service: script.andrey_home_lights_only
+
+      # 2. Был ли ты вне дома больше 1 часа?
+      - condition: template
+        value_template: >
+          {{ (as_timestamp(trigger.to_state.last_changed)
+              - as_timestamp(trigger.from_state.last_changed)) > 3600 }}
+
+      # 3. Проверяем движение:
+      #    a) если было за последние 5 минут — не ждём, сразу едем дальше
+      #    b) если не было — ждём новое движение до 3 минут
+      - choose:
+          # 3a. Недавнее движение (сенсор kitchen_motion_recent = on)
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.kitchen_motion_recent
+                state: "on"
+            sequence: []   # ничего не делаем, сразу переходим к TTS + радио
+
+        # 3b. Недавнего движения не было — ждём новое движение до 3 минут
+        default:
+          - wait_for_trigger:
+              - platform: state
+                entity_id: binary_sensor.kitchen_motion_any
+                to: "on"
+            timeout: "00:01:00"
+            continue_on_timeout: true
+
+          # если движения так и не было — выходим из автоматизации
+          - condition: template
+            value_template: "{{ wait.trigger is not none }}"
+
+      # 4. Общая часть для обоих случаев (и 3a, и 3b):
+      - service: script.home_status_report_tts
+
+      # 4) Запускаем радио с fade-out:
+      - service: script.andrey_home_after_greeting
+
+  - alias: "Kitchen motion – any motion mark"
+    id: kitchen_motion_any_mark
+    mode: restart
+
+    trigger:
+      - platform: webhook
+        webhook_id: ipwebcam_kitchen_motion
+
+    # Нам ничего не нужно выполнять, важно только обновление last_triggered
+    condition: []
+    action: []
+
+# *** *** *** *** *** *** ***
+
+script:
+  andrey_home_after_greeting:
+    alias: "Andrey Home Arrival – radio"
+    mode: restart
+    sequence:
+      # 3. Radio: start, play, fade-out
+      - variables:
+          _start_volume: "{{ states('input_number.radio_start_volume_default') | float }}"
+          _fade_steps: "{{ states('input_number.radio_fade_steps_default') | int }}"
+          _fade_step_delay: "{{ states('input_number.radio_fade_step_delay_default') | int }}"
+
+      # Set initial radio volume from helper
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ _start_volume }}"
+
+      # IMPORTANT: use ready-made radio script instead of play_media
+      - service: script.radio_play_current
+
+      # Radio plays for 30 minutes
+      - delay:
+          minutes: 30
+
+      # Smooth radio fade-out
+      - repeat:
+          count: "{{ _fade_steps }}"
+          sequence:
+            - service: media_player.volume_set
+              target:
+                entity_id: media_player.galaxy_a5_2017
+              data:
+                volume_level: >
+                  {% set start = _start_volume | float %}
+                  {% set steps = _fade_steps | float %}
+                  {% set idx = repeat.index | float %}
+                  {% set val = start - (start / steps) * idx %}
+                  {{ [val, 0] | max }}   {# безопасный минимум #}
+
+            - delay:
+                seconds: "{{ _fade_step_delay }}"
+
+      # Stop radio completely
+      - service: media_player.media_stop
+        target:
+          entity_id: media_player.galaxy_a5_2017
+
+# *** *** *** *** *** *** ***
+
+  home_status_report_tts:
+    alias: "TTS: Home status smart"
+    mode: parallel
+    sequence:
+      # 0) Set TTS volume using the global helper
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ states('input_number.tts_volume_default') | float }}"
+
+      # 1) Build message once into a variable
+      - variables:
+          _msg: >-
+            {# === Current sensor values === #}
+            {% set t = states('sensor.qingping_temperature') | float(0) | round(1) %}
+            {% set h = states('sensor.qingping_humidity') | float(0) | round(0) %}
+            {% set co2 = states('sensor.qingping_co2') | int(0) %}
+            {% set pm = states('sensor.qingping_pm2_5') | int(0) %}
+
+            {# === Thresholds (can be moved to helpers later) === #}
+            {# Temperature °C #}
+            {% set t_warn_low, t_warn_high = 21, 26 %}
+            {% set t_bad_low,  t_bad_high  = 18, 29 %}
+
+            {# Humidity % #}
+            {% set h_warn_low, h_warn_high = 39, 65 %}
+            {% set h_bad_low,  h_bad_high  = 35, 70 %}
+
+            {# CO2 ppm #}
+            {% set co2_warn_high = 900 %}
+            {% set co2_bad_high  = 1200 %}
+
+            {# PM2.5 µg/m³ #}
+            {% set pm_warn_high = 35 %}
+            {% set pm_bad_high  = 70 %}
+
+            {# === Lists of warnings and bad metrics === #}
+            {% set ns = namespace(warn=[], bad=[]) %}
+
+            {# --- Temperature --- #}
+            {% if t < t_bad_low or t > t_bad_high %}
+              {% set ns.bad = ns.bad + ['Temperature is ' ~ t ~ ' degrees.'] %}
+            {% elif t < t_warn_low or t > t_warn_high %}
+              {% set ns.warn = ns.warn + ['Temperature is ' ~ t ~ ' degrees.'] %}
+            {% endif %}
+
+            {# --- Humidity --- #}
+            {% if h < h_bad_low or h > h_bad_high %}
+              {% set ns.bad = ns.bad + ['Humidity is ' ~ h|int ~ ' percent.'] %}
+            {% elif h < h_warn_low or h > h_warn_high %}
+              {% set ns.warn = ns.warn + ['Humidity is ' ~ h|int ~ ' percent.'] %}
+            {% endif %}
+
+            {# --- CO₂ --- #}
+            {% if co2 > co2_bad_high %}
+              {% set ns.bad = ns.bad + ['CO two level is ' ~ co2 ~ ' ppm.'] %}
+            {% elif co2 > co2_warn_high %}
+              {% set ns.warn = ns.warn + ['CO two level is ' ~ co2 ~ ' ppm.'] %}
+            {% endif %}
+
+            {# --- PM2.5 --- #}
+            {% if pm > pm_bad_high %}
+              {% set ns.bad = ns.bad + ['PM two point five is ' ~ pm ~ ' micrograms per cubic meter.'] %}
+            {% elif pm > pm_warn_high %}
+              {% set ns.warn = ns.warn + ['PM two point five is ' ~ pm ~ ' micrograms per cubic meter.'] %}
+            {% endif %}
+
+            {# === Final message === #}
+            Now it is
+            {{ now().strftime('%H') | int }} hours
+            {{ now().strftime('%M') | int }} minutes.
+
+            {% if ns.bad|length == 0 and ns.warn|length == 0 %}
+              All monitored metrics are within normal range.
+            {% elif ns.bad|length == 0 and ns.warn|length > 0 %}
+              All monitored metrics are within normal range, however some metrics need your attention.
+              {{ ns.warn | join(' ') }}
+            {% elif ns.bad|length > 0 %}
+              Attention. Some metrics are in a bad range and require special care.
+              {{ ns.bad | join(' ') }}
+              {% if ns.warn|length > 0 %}
+                Additionally, some metrics are slightly outside the normal range.
+                {{ ns.warn | join(' ') }}
+              {% endif %}
+            {% endif %}
+
+      # 2) Say the message (once, from the variable)
+      - service: script.say_auto_lang
+        data:
+          entity_id: media_player.galaxy_a5_2017
+          message: "{{ _msg }}"
+
+      # 3) Dynamic delay based on message length
+      # мы считаем ~10 символов в секунду (вместо 16 → пауза дольше),
+      # добавляем ещё +2 секунды запаса,
+      # не даём задержке быть меньше 6 сек и больше 35 сек.
+      - delay:
+          seconds: >-
+            {% set chars = _msg | length %}
+            {% set cps = 10 %}          {# approx characters per second (медленнее = дольше пауза) #}
+            {% set base = (chars / cps) | round(0, 'ceil') + 2 %}
+            {% set min_sec = 6 %}
+            {% set max_sec = 35 %}
+            {{ [min_sec, [base, max_sec] | min] | max }}
+
+  andrey_home_lights_only:
+    alias: "Andrey Home Arrival – lights only"
+    mode: restart
+    sequence:
+      # 1. Calculate whether it is night or day
+      - variables:
+          _now: "{{ now() }}"
+          _night_start: >
+            {{ today_at(states('input_datetime.night_time_start')) }}
+          _day_start: >
+            {% set wd = now().isoweekday() %}  {# 1=Mon .. 7=Sun #}
+            {% if wd in [6, 7] %}
+              {{ today_at(states('input_datetime.day_time_weekends')) }}
+            {% else %}
+              {{ today_at(states('input_datetime.day_time_weekdays')) }}
+            {% endif %}
+          _is_night: >
+            {# Night — from night_start to day_start #}
+            {% if _night_start <= _day_start %}
+              {{ _now >= _night_start and _now < _day_start }}
+            {% else %}
+              {{ _now >= _night_start or _now < _day_start }}
+            {% endif %}
+          _is_dark: "{{ is_state('sun.sun', 'below_horizon') }}"
+
+      # 2. Control Tion backlight depending on time of day
+      - choose:
+          # Night: Tion night mode
+          - conditions: "{{ _is_night }}"
+            sequence:
+              - service: script.tion_light_night
+
+          # Day: Tion day mode
+          - conditions: "{{ not _is_night }}"
+            sequence:
+              - service: script.tion_light_day
+
+      # 2b. Night light — if it is dark (regardless of Tion schedule)
+      - choose:
+          - conditions: "{{ _is_dark }}"
+            sequence:
+              - service: light.turn_on
+                target:
+                  entity_id: light.nochnik
+
+  andrey_i_am_home:
+    alias: "Andrey: I am home"
+    mode: single
+    sequence:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.andrey_manual_presence
+
+  andrey_i_am_away:
+    alias: "Andrey: I am away"
+    mode: single
+    sequence:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.andrey_manual_presence
+
+# *** *** *** *** *** *** ***

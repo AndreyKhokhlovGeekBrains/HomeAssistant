@@ -1,0 +1,26 @@
+automation:
+  - id: phone_apps_offline_alert
+    alias: "Alert • Phone apps offline"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id:
+          - binary_sensor.kitchen_cam_online
+          - binary_sensor.galaxy_a5_fully_kiosk_online
+        to: "off"
+        for: "00:02:00"   # чтобы не ловить краткие глюки
+    action:
+      - service: telegram_bot.send_message
+        data:
+          target: 390171493   # chat_id
+          message: >-
+            ⚠️ Phone apps offline detected on Galaxy A5.
+
+            {% if is_state('binary_sensor.kitchen_cam_online', 'off') %}
+            • Kitchen camera is OFFLINE
+            {% endif %}
+            {% if is_state('binary_sensor.galaxy_a5_fully_kiosk_online', 'off') %}
+            • Fully Kiosk is OFFLINE
+            {% endif %}
+
+            Please check the phone and restart the app(s).

@@ -1,0 +1,388 @@
+# ── Template sensors and binary_sensors (single top-level "template" key) ──
+template:
+  - binary_sensor:
+      - name: "Kitchen Cam Online"
+        unique_id: kitchen_cam_online
+        device_class: connectivity
+        state: >-
+          {{ states('camera.galaxy_a5_2017') not in ['unavailable', 'unknown', ''] }}
+        icon: >-
+          {{ 'mdi:camera-wireless'
+             if states('camera.galaxy_a5_2017') not in ['unavailable', 'unknown', '']
+             else 'mdi:camera-off' }}
+
+      - name: "Galaxy A5 Fully Kiosk Online"
+        unique_id: galaxy_a5_fully_kiosk_online
+        device_class: connectivity
+        state: >-
+          {{ states('media_player.galaxy_a5_2017') not in ['unavailable', 'unknown', ''] }}
+        icon: >-
+          {{ 'mdi:kiosk'
+             if states('media_player.galaxy_a5_2017') not in ['unavailable', 'unknown', '']
+             else 'mdi:kiosk-off' }}
+  # 1) Tion desired speed by CO₂ (step-by-step with hysteresis)
+  - trigger:
+      - platform: state
+        entity_id: sensor.qingping_co2
+      - platform: time_pattern
+        minutes: "/5"
+    sensor:
+      - name: "Tion Desired Speed"
+        unique_id: tion_desired_speed
+        unit_of_measurement: "lvl"
+        state: >-
+          {# Inputs #}
+          {% set co2 = states('sensor.qingping_co2') | int(0) %}
+          {% set h   = states('input_number.co2_step_hyst') | int(10) %}
+          {% set cur = states('sensor.tion_desired_speed') | int(1) %}
+
+          {# Boundaries between levels (1→2…6→7). Your mapping: 450,500,550,650,850,950 #}
+          {% set b = [450, 500, 550, 650, 850, 950] %}
+
+          {# Hysteresis logic (one step at a time):
+             - Go UP only if CO2 >= (next boundary + h)
+             - Go DOWN only if CO2 <  (prev boundary - h)
+             - Else keep current level
+          #}
+          {% set new = cur %}
+          {% if cur < 7 and co2 >= (b[cur-1] + h) %}
+            {% set new = cur + 1 %}
+          {% elif cur > 1 and co2 < (b[cur-2] - h) %}
+            {% set new = cur - 1 %}
+          {% endif %}
+          {{ new }}
+
+  # 3) Virtual outdoor temperature based on weather.forecast_home
+  - sensor:
+      - name: "Outdoor Temp"
+        unique_id: outdoor_temp_virtual
+        device_class: temperature
+        unit_of_measurement: "°C"
+        state: >-
+          {% set t = state_attr('weather.forecast_home', 'temperature') %}
+          {% if t is not none %}
+            {{ t }}
+          {% else %}
+            {{ states('sensor.qingping_temperature') | float(23) - 5 }}
+          {% endif %}
+        availability: >-
+          {{ state_attr('weather.forecast_home', 'temperature') is not none
+             or states('sensor.qingping_temperature') not in ['unknown', 'unavailable'] }}
+
+  # 4) Qingping aliases (stable sensor names to use in packages and dashboards)
+  - sensor:
+      - name: "Qingping PM2.5"
+        unique_id: qingping_pm25
+        unit_of_measurement: "µg/m³"
+        device_class: pm25
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_pm25_density') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_pm25_density')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping PM10"
+        unique_id: qingping_pm10
+        unit_of_measurement: "µg/m³"
+        device_class: pm10
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_pm10_density') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_pm10_density')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping CO2"
+        unique_id: qingping_co2
+        unit_of_measurement: "ppm"
+        device_class: carbon_dioxide
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_co2_density') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_co2_density')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping eTVOC"
+        unique_id: qingping_etvoc
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_tvoc_density') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_tvoc_density')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping Temperature"
+        unique_id: qingping_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_temperature') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_temperature')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping Humidity"
+        unique_id: qingping_humidity
+        unit_of_measurement: "%"
+        device_class: humidity
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_relative_humidity') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_relative_humidity')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping Noise"
+        unique_id: qingping_noise
+        unit_of_measurement: "dB"
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_noise_decibel') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_noise_decibel')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping Battery"
+        unique_id: qingping_battery
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: "{{ states('sensor.cgllc_cgs2_046c_battery_level') }}"
+        availability: >-
+          {{ states('sensor.cgllc_cgs2_046c_battery_level')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+
+      - name: "Qingping Charging"
+        unique_id: qingping_charging
+        icon: mdi:power-plug-battery
+        state: >-
+          {% set v = state_attr('sensor.cgllc_cgs2_046c_charging_state',
+                                'battery.charging_state') %}
+          {{ 'Charging' if v in [1, '1', true, 'true', 'on', 'charging']
+             else 'Not charging' }}
+        availability: >-
+          {{ state_attr('sensor.cgllc_cgs2_046c_charging_state',
+                        'battery.charging_state') is not none }}
+
+  # 5) Binary sensors: connectivity / presence / voice announcements
+  - binary_sensor:
+      - name: "Andrey home (stable)"
+        unique_id: andrey_home_stable
+        state: >
+          {{
+            is_state('person.andrey', 'home')
+          }}
+        # Turns on only if home for at least 15 seconds
+        delay_on:
+          seconds: 15
+        # Turns off only if not_home for at least 1 minute
+        delay_off:
+          minutes: 1
+
+      # - name: "Voice announcements allowed"
+      #   unique_id: voice_announcements_allowed
+      #   state: >-
+      #     {{ states('input_select.house_mode') in ['Home'] }}
+      #   attributes:
+      #     reason: >-
+      #       {{ 'Home → allowed'
+      #          if is_state('input_select.house_mode', 'Home')
+      #          else 'Away/Night → muted' }}
+
+      # - name: "Aroma lock active"
+      #   unique_id: aroma_lock_active
+      #   state: "{{ is_state('timer.aroma_lock', 'active') }}"
+      #   icon: mdi:pine-tree
+
+      # 🔹 Новый сенсор: было ли движение на кухне недавно (по webhook-автомату)
+      - name: "Kitchen motion (recent)"
+        unique_id: kitchen_motion_recent
+        device_class: motion
+        state: >-
+          {% set last = state_attr(
+              'automation.security_kitchen_motion_snapshots_3_photos_30min_cooldown',
+              'last_triggered'
+            ) %}
+          {{ last is not none and (now() - as_datetime(last)).total_seconds() < 300 }}
+        attributes:
+          last_motion: >-
+            {{ state_attr(
+                'automation.security_kitchen_motion_snapshots_3_photos_30min_cooldown',
+                'last_triggered'
+              ) }}
+
+      - name: "Kitchen motion (any)"
+        unique_id: kitchen_motion_any
+        device_class: motion
+        state: >-
+          {% set last = state_attr(
+              'automation.kitchen_motion_any_motion_mark',
+              'last_triggered'
+            ) %}
+          {{ last is not none and (now() - as_datetime(last)).total_seconds() < 30 }}
+        attributes:
+          last_motion: >-
+            {{ state_attr(
+                'automation.kitchen_motion_any_motion_mark',
+                'last_triggered'
+              ) }}
+
+      - name: "Radio sleep – last 30 seconds"
+        unique_id: radio_sleep_last_30s
+        state: >
+          {% set remaining = state_attr('timer.radio_sleep', 'remaining') %}
+          {% if remaining %}
+            {{ is_state('timer.radio_sleep', 'active')
+               and as_timedelta(remaining).total_seconds() <= 30 }}
+          {% else %}
+            false
+          {% endif %}
+
+      - name: "Exhaust • Winter mode"
+        unique_id: exhaust_winter_mode
+        state: >
+          {% set t_out = state_attr('weather.forecast_home', 'temperature') | float(999) %}
+          {% set rh_in = states('sensor.qingping_humidity') | float(0) %}
+          {{ t_out <= 5 or rh_in <= 40 }}
+        icon: >
+          {{ 'mdi:snowflake' if this.state == 'on' else 'mdi:white-balance-sunny' }}
+
+      # - name: "Andrey Home WiFi"
+      #   unique_id: andrey_home_wifi
+      #   state: >
+      #     {{
+      #       is_state('binary_sensor.redmi_note_wi_fi', 'on')
+      #     }}
+
+  - trigger:
+      - platform: state
+        entity_id:
+          - switch.presenceflag
+          - input_boolean.andrey_manual_presence
+
+    binary_sensor:
+      - name: "Andrey home (final)"
+        unique_id: andrey_home_final
+        delay_off:
+          seconds: 3
+
+        state: >-
+          {% set manual = 'input_boolean.andrey_manual_presence' %}
+          {% set presence = 'switch.presenceflag' %}
+          {% set pf = states(presence) %}
+          {% set manual_age_sec = (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) %}
+
+          {% if manual_age_sec <= 60 %}
+            {{ is_state(manual, 'on') }}
+          {% elif pf in ['on', 'off'] %}
+            {{ pf == 'off' }}   {# OFF = Home #}
+          {% else %}
+            {{ is_state(this.entity_id, 'on') }}  {# Freeze last known final state as boolean #}
+          {% endif %}
+
+        attributes:
+          source: >-
+            {% set manual = 'input_boolean.andrey_manual_presence' %}
+            {% set presence = 'switch.presenceflag' %}
+            {% set pf = states(presence) %}
+            {% set manual_age_sec = (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) %}
+
+            {% if manual_age_sec <= 60 %}
+              manual_60s
+            {% elif pf == 'off' %}
+              aqara_home
+            {% elif pf == 'on' %}
+              aqara_away
+            {% else %}
+              frozen_unavailable
+            {% endif %}
+
+          manual_age_sec: >-
+            {% set manual = 'input_boolean.andrey_manual_presence' %}
+            {{ (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) }}
+
+          presenceflag_state: >-
+            {{ states('switch.presenceflag') }}
+
+# *** *** *** *** *** *** ***
+
+  # 6) Kitchen phone sensors (from kitchen_phone_info)
+  - sensor:
+      - name: "Kitchen Phone Battery Temp"
+        unit_of_measurement: "°C"
+        state: >-
+          {{ state_attr('sensor.kitchen_phone_info', 'batteryTemperature') }}
+
+      - name: "Kitchen Phone Plugged"
+        state: >-
+          {{ iif(
+               state_attr('sensor.kitchen_phone_info', 'plugged') | int(0) == 1,
+               'charging',
+               'not_charging'
+             ) }}
+
+  # 7) Philips air purifier template sensor (preset mode)
+  - sensor:
+      - name: "Philips Preset Mode"
+        unique_id: philips_preset_mode
+        state: >-
+          {{ state_attr('fan.philips_air_purifier', 'preset_mode') }}
+        icon: mdi:fan-auto
+
+  # 8) DMaker fan template sensors (preset, oscillation, power)
+  - sensor:
+      - name: "DMaker Fan Preset Mode"
+        unique_id: dmaker_fan_preset_mode
+        state: >-
+          {{ state_attr('fan.dmaker_p45_9247_fan', 'preset_mode') }}
+        icon: mdi:fan-auto
+
+      - name: "DMaker Fan Oscillating"
+        unique_id: dmaker_fan_oscillating
+        state: >-
+          {{ state_attr('fan.dmaker_p45_9247_fan', 'oscillating') }}
+        icon: mdi:sync
+
+      - name: "DMaker Fan Power"
+        unique_id: dmaker_fan_power
+        state: "{{ states('fan.dmaker_p45_9247_fan') }}"
+        icon: >-
+          {% if is_state('fan.dmaker_p45_9247_fan', 'on') %}
+            mdi:power
+          {% else %}
+            mdi:power-off
+          {% endif %}
+
+  - sensor:
+      - name: "Automation health (stale)"
+        unique_id: automation_health_stale
+        state: >-
+          {% set days = 7 %}
+          {% set now_ts = now() %}
+          {% set stale = states.automation
+            | selectattr('state','eq','on')
+            | selectattr('attributes.last_triggered','!=', none)
+            | selectattr(
+                'attributes.last_triggered',
+                'lt',
+                now_ts - timedelta(days=days)
+              )
+            | list %}
+          {{ stale | count }}
+        attributes:
+          days_threshold: 7
+          stale_automations: >-
+            {% set days = 7 %}
+            {% set now_ts = now() %}
+            {% set stale = states.automation
+              | selectattr('state','eq','on')
+              | selectattr('attributes.last_triggered','!=', none)
+              | selectattr(
+                  'attributes.last_triggered',
+                  'lt',
+                  now_ts - timedelta(days=days)
+                )
+              | list %}
+            {{ stale | map(attribute='entity_id') | join(', ') }}
+          never_triggered_automations: >-
+            {% set never = states.automation
+              | selectattr('state','eq','on')
+              | selectattr('attributes.last_triggered','==', none)
+              | list %}
+            {{ never | map(attribute='entity_id') | join(', ') }}

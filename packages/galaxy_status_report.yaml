@@ -1,0 +1,95 @@
+automation:
+  - id: notify_telegram_galaxy_a5_low_battery
+    alias: "Security • Galaxy A5 low battery (Telegram)"
+    mode: single
+
+    # Trigger: battery < 70%
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.samsung_battery_level
+        below: 70
+        for:
+          minutes: 5
+
+    # Conditions
+    condition:
+      # 1) Phone is not charging
+      - condition: template
+        value_template: >
+          {{ states('sensor.samsung_battery_state') in ['discharging', 'not_charging'] }}
+
+      # 2) Cooldown: last notification was more than 6 hours ago
+      - condition: template
+        value_template: >
+          {{ this.last_triggered is none or
+             (now() - this.last_triggered).total_seconds() > 21600 }}
+
+    # Action: send Telegram text
+    action:
+      # 1) Always send Telegram message
+      - service: telegram_bot.send_message
+        data:
+          target: 390171493
+          message: >
+            ⚠ Galaxy A5 battery warning:
+            The charge level dropped below 70% and the device is not charging.
+            Current battery level: {{ states('sensor.samsung_battery_level') }}%.
+            Please check the cable or power source.
+
+      # 2) TTS part (with volume handling & radio resume)
+      - variables:
+          # Global default TTS volume
+          _tts_volume: "{{ states('input_number.tts_volume_default') | float(0.8) }}"
+
+          # Volume before we touch it (fallback to 0.5 if unknown)
+          _prev_volume: >
+            {{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.5) }}
+
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.andrey_home_stable
+                state: "on"
+            sequence:
+              # Was the player actually playing (radio/music) at the moment?
+              - variables:
+                  _radio_was_playing: >
+                    {{ is_state('media_player.galaxy_a5_2017', 'playing') }}
+
+              - service: media_player.media_stop
+                target:
+                  entity_id: media_player.galaxy_a5_2017
+
+              # Set TTS volume
+              - service: media_player.volume_set
+                target:
+                  entity_id: media_player.galaxy_a5_2017
+                data:
+                  volume_level: "{{ _tts_volume }}"
+
+              # Say battery warning
+              - service: script.say_auto_lang
+                data:
+                  entity_id: media_player.galaxy_a5_2017
+                  message: >
+                    Battery warning. Galaxy A5 charge is below seventy percent
+                    and the phone is not charging. Please check the cable or power source.
+
+              # If radio/music was playing before TTS — resume radio after short delay
+              - if:
+                  - condition: template
+                    value_template: "{{ _radio_was_playing }}"
+                then:
+                  # Give TTS some time to finish
+                  - delay: "00:00:17"
+
+                  # Restore previous volume
+                  - service: media_player.volume_set
+                    target:
+                      entity_id: media_player.galaxy_a5_2017
+                    data:
+                      volume_level: "{{ _prev_volume }}"
+
+                  # Start radio again (current station from your script)
+                  - service: script.radio_play_current
+

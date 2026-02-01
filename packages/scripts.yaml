@@ -1,0 +1,51 @@
+script:
+  say_auto_lang:
+    alias: 'TTS: auto language'
+    mode: parallel
+    fields:
+      message:
+        description: Текст для озвучки
+        example: Привет, Андрей! / Good morning!
+        required: true
+      entity_id:
+        description: Медиаплеер
+        default: media_player.galaxy_a5_2017
+    sequence:
+    - variables:
+        has_cyrillic: "{{ (message | regex_search('[\\u0400-\\u04FF]')) is not none }}"
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ has_cyrillic }}'
+        sequence:
+        - service: tts.google_say_ru
+          data:
+            entity_id: '{{ entity_id }}'
+            message: '{{ message }}'
+      - conditions:
+        - condition: template
+          value_template: '{{ not has_cyrillic }}'
+        sequence:
+        - service: tts.google_say_en
+          data:
+            entity_id: '{{ entity_id }}'
+            message: '{{ message }}'
+
+  # Dynamic delay based on TTS message length
+  tts_wait_by_text:
+    alias: "TTS: wait by text length"
+    mode: single
+    fields:
+      message:
+        description: "TTS text to estimate duration"
+        example: "Good morning!"
+        required: true
+    sequence:
+      - delay:
+          seconds: >-
+            {% set chars = message | length %}
+            {% set cps = 10 %}
+            {% set base = (chars / cps) | round(0, 'ceil') + 2 %}
+            {% set min_sec = 6 %}
+            {% set max_sec = 35 %}
+            {{ [min_sec, [base, max_sec] | min] | max }}

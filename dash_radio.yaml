@@ -1,0 +1,146 @@
+views:
+  - title: Radio
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: '            Radio settings'
+            heading_style: title
+            icon: mdi:radio
+            grid_options:
+              columns: 12
+              rows: 1
+          - type: vertical-stack
+            cards:
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    entity: media_player.galaxy_a5_2017
+                    primary: Play
+                    secondary: >
+                      {% if is_state('media_player.galaxy_a5_2017', 'playing')
+                      %}
+                        Playing
+                      {% else %}
+                        Idle
+                      {% endif %}
+                    icon: mdi:play-circle
+                    tap_action:
+                      action: call-service
+                      service: script.radio_play_current
+                    color: >
+                      {% if is_state('media_player.galaxy_a5_2017', 'playing')
+                      %}
+                        green
+                      {% else %}
+                        grey
+                      {% endif %}
+                    features_position: bottom
+                  - type: custom:mushroom-entity-card
+                    entity: media_player.galaxy_a5_2017
+                    name: Stop
+                    icon: mdi:stop-circle
+                    icon_color: red
+                    tap_action:
+                      action: call-service
+                      service: media_player.media_stop
+                      target:
+                        entity_id: media_player.galaxy_a5_2017
+              - type: custom:mushroom-media-player-card
+                entity: media_player.galaxy_a5_2017
+                name: Radio on Galaxy A5
+                icon: mdi:radio
+                use_media_info: false
+                show_volume_level: true
+                volume_controls:
+                  - volume_set
+                media_controls: []
+              - type: custom:mushroom-template-card
+                entity: sensor.galaxy_a5_volume_level_music
+                primary: Phone media volume
+                secondary: >
+                  {% set v = states('sensor.galaxy_a5_volume_level_music') | int(0) %}
+                  {{ (v / 15 * 100) | round(0) }}% ({{ v }}/15)
+                icon: mdi:volume-high
+                icon_color: >
+                  {% set v = states('sensor.galaxy_a5_volume_level_music') | int(0) %}
+                  {% if v < 10 %} red
+                  {% elif v < 13 %} orange
+                  {% else %} green
+                  {% endif %}
+
+              - type: custom:mushroom-select-card
+                entity: input_select.radio_station
+                name: Station
+                icon: mdi:playlist-music
+                layout: horizontal
+                icon_color: blue
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-number-card
+                    entity: input_number.radio_sleep_hours
+                    name: Hours
+                    icon: mdi:timer-sand
+                    display_mode: row
+                  - type: custom:mushroom-number-card
+                    entity: input_number.radio_sleep_minutes
+                    name: Minutes
+                    icon: mdi:timer-sand-complete
+                    display_mode: row
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    entity: input_button.radio_sleep_start
+                    primary: Start
+                    icon: mdi:timer-play
+                    icon_color: green
+                    tap_action:
+                      action: call-service
+                      service: input_button.press
+                      target:
+                        entity_id: input_button.radio_sleep_start
+                  - type: custom:mushroom-template-card
+                    entity: input_button.radio_sleep_stop
+                    primary: Stop
+                    icon: mdi:timer-off
+                    icon_color: red
+                    tap_action:
+                      action: call-service
+                      service: input_button.press
+                      target:
+                        entity_id: input_button.radio_sleep_stop
+                  - type: custom:mushroom-template-card
+                    entity: input_button.radio_sleep_reset
+                    primary: Reset
+                    icon: mdi:restart
+                    icon_color: blue
+                    tap_action:
+                      action: call-service
+                      service: input_button.press
+                      target:
+                        entity_id: input_button.radio_sleep_reset
+              - type: custom:timer-bar-card
+                entity: timer.radio_sleep
+                name: Sleep timer
+                icon: mdi:timer-sand
+                invert: true
+                bar_direction: ltr
+                bar_width: 80%
+                bar_height: 14px
+                bar_radius: 8px
+                bar_background: '#eeeeee'
+                bar_foreground: green
+                modifications:
+                  - bar_foreground: green
+                  - remaining: '00:00:30'
+                    bar_foreground: orange
+                  - remaining: '00:00:10'
+                    bar_foreground: red
+                mushroom:
+                  icon_color: blue
+                  primary_info: name
+                  secondary_info: state
+    header: {}
+    type: sections
+    max_columns: 4
+    cards: []

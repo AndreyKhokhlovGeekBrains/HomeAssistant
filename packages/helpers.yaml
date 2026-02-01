@@ -1,0 +1,345 @@
+# =========================
+# packages/modes/helpers.yaml
+# =========================
+
+input_select:
+  # house_mode:
+  #   name: "House mode"
+  #   options:
+  #     - Home
+  #     - Away
+  #     - Night
+  #   icon: mdi:home-account
+  #   initial: Home
+
+  radio_station:
+    name: Radio station (current)
+    icon: mdi:radio
+    options:
+      - Absolute Chillout
+      - Relax FM Chillout
+      - Радио Дача
+    initial: Relax FM Chillout
+
+input_boolean:
+  aroma_mode:
+    name: "Режим ароматизации"
+    icon: mdi:flower-tulip
+  gpt_voice_enabled:
+    name: "Озвучка сообщений ChatGPT"
+    icon: mdi:comment-processing-outline
+  # day_night_schedule_enabled:
+  #   name: "Расписание: включено"
+  #   initial: true
+
+  andrey_manual_presence:
+    name: Andrey manual presence
+    icon: mdi:account-check
+
+  ceiling_light_intent:
+    name: "Ceiling light (intent)"
+    icon: mdi:ceiling-light
+
+  ceiling_light_turn_off_request:
+    name: "Ceiling light: turn OFF request"
+    icon: mdi:lightbulb-off
+
+input_number:
+  pm25_on:
+    name: "Порог PM2.5 (включение очистителя)"
+    min: 5
+    max: 100
+    step: 1
+    unit_of_measurement: "µg/m³"
+    icon: mdi:air-purifier
+    initial: 15
+
+  pm25_off:
+    name: "Порог PM2.5 (выключение очистителя)"
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "µg/m³"
+    icon: mdi:air-purifier-off
+    initial: 9
+
+  humidity_target:
+    name: "Целевая влажность"
+    min: 30
+    max: 70
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:water-percent
+    initial: 50
+
+  etvoc_high:
+    name: "Порог eTVOC (индикатор запахов)"
+    min: 100
+    max: 1000
+    step: 10
+    unit_of_measurement: "ppb"
+    icon: mdi:chemical-weapon
+    initial: 400
+
+# ── Helpers ───────────────────────────────────────────────────
+  pm25_on_for_min:
+    name: "Очиститель: PM2.5 ≥ on (мин)"
+    min: 1
+    max: 60
+    step: 1
+    unit_of_measurement: "min"
+    initial: 1
+
+  pm25_off_for_min:
+    name: "Очиститель: PM2.5 ≤ off (мин)"
+    min: 1
+    max: 60
+    step: 1
+    unit_of_measurement: "min"
+    initial: 1
+
+  pm25_turbo:
+    name: "Очиститель: Turbo порог PM2.5"
+    min: 20
+    max: 200
+    step: 1
+    unit_of_measurement: "µg/m³"
+    initial: 70
+
+  co2_step_hyst:
+    name: "Tion: гистерезис ступеней CO₂"
+    min: 0
+    max: 200
+    step: 5
+    unit_of_measurement: "ppm"
+    initial: 10
+
+  tion_min_step_min:
+    name: "Tion: минимум времени на ступени (мин)"
+    min: 5
+    max: 60
+    step: 5
+    unit_of_measurement: "min"
+    initial: 5
+
+  tion_pm25_on:
+    name: "Очиститель: PM2.5 порог включения"
+    min: 5
+    max: 100
+    step: 1
+    unit_of_measurement: "µg/m³"
+    initial: 12
+
+  tion_pm25_off:
+    name: "Очиститель: PM2.5 порог выключения"
+    min: 1
+    max: 50
+    step: 1
+    unit_of_measurement: "µg/m³"
+    initial: 8
+
+# ── Helpers • Exhaust thresholds ───────────────────────────────────────────────
+  pm25_exhaust_on:
+    name: "PM2.5 • Exhaust ON threshold"
+    min: 0
+    max: 200
+    step: 5
+    unit_of_measurement: "µg/m³"
+    mode: box
+    icon: mdi:blur
+
+  pm25_exhaust_off:
+    name: "PM2.5 • Exhaust OFF threshold"
+    min: 0
+    max: 200
+    step: 5
+    unit_of_measurement: "µg/m³"
+    mode: box
+    icon: mdi:blur-off
+
+  co2_exhaust_on:
+    name: "CO₂ • Exhaust ON threshold"
+    min: 400
+    max: 2000
+    step: 50
+    unit_of_measurement: "ppm"
+    mode: box
+    icon: mdi:molecule-co2
+
+  co2_exhaust_off:
+    name: "CO₂ • Exhaust OFF threshold"
+    min: 400
+    max: 2000
+    step: 50
+    unit_of_measurement: "ppm"
+    mode: box
+    icon: mdi:power-off
+
+  exhaust_off_delay_min:
+    name: "Exhaust • OFF delay (minutes)"
+    min: 1
+    max: 60
+    step: 1
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-outline
+    initial: 1
+
+  exhaust_on_delay_min:
+    name: "Exhaust • ON delay (minutes)"
+    min: 1
+    max: 60
+    step: 1
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-play-outline
+    initial: 1
+
+  temp_exhaust_on:
+    name: "Temp • Exhaust ON threshold"
+    min: 15
+    max: 35
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer
+
+  temp_exhaust_off:
+    name: "Temp • Exhaust OFF threshold"
+    min: 15
+    max: 35
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-off
+
+  voc_exhaust_on:
+    name: "TVOC • Exhaust ON threshold"
+    min: 0
+    max: 5
+    step: 0.1
+    unit_of_measurement: "mg/m³"
+    mode: box
+    icon: mdi:chemical-weapon
+    initial: 0.9
+
+  voc_exhaust_off:
+    name: "TVOC • Exhaust OFF threshold"
+    min: 0
+    max: 5
+    step: 0.1
+    unit_of_measurement: "mg/m³"
+    mode: box
+    icon: mdi:shield-off-outline
+
+  # --- Default TTS volume for all voice messages ---
+  tts_volume_default:
+    name: Default TTS volume
+    min: 0.0
+    max: 1.0
+    step: 0.05
+    mode: slider
+    unit_of_measurement: ""
+    icon: mdi:volume-high
+    initial: 0.9
+
+  # --- Default radio start volume for all radio automations ---
+  radio_start_volume_default:
+    name: Default radio start volume
+    min: 0.0
+    max: 1.0
+    step: 0.05
+    mode: slider
+    unit_of_measurement: ""
+    icon: mdi:radio
+    initial: 0.6
+
+  # --- Default fade-out steps for radio ---
+  radio_fade_steps_default:
+    name: Radio fade steps (default)
+    min: 1
+    max: 20
+    step: 1
+    mode: slider
+    unit_of_measurement: "steps"
+    icon: mdi:chevron-double-down
+    initial: 6
+
+  # --- Default fade-out step delay for radio (seconds) ---
+  radio_fade_step_delay_default:
+    name: Radio fade step delay (default)
+    min: 1
+    max: 60
+    step: 1
+    mode: slider
+    unit_of_measurement: "s"
+    icon: mdi:timer-outline
+    initial: 4
+
+  radio_sleep_hours:
+    name: "Radio sleep – hours"
+    min: 0
+    max: 24
+    step: 1
+    unit_of_measurement: "h"
+    mode: box   # удобнее вводить с клавиатуры
+
+  radio_sleep_minutes:
+    name: "Radio sleep – minutes"
+    min: 0
+    max: 59
+    step: 1
+    unit_of_measurement: "min"
+    mode: box 
+
+# *** *** *** *** *** *** ***
+timer:
+  aroma_lock:
+    duration: "08:00:00"
+  # aroma_vent:
+  #   duration: "05:00:00"
+
+  radio_sleep:
+    name: "Radio sleep timer"
+    duration: "00:00:00"  # дефолтное значение
+
+input_datetime:
+  night_time_start:
+    name: "Ночь начинается (время)"
+    has_date: false
+    has_time: true
+    initial: "23:00:00"
+
+  day_time_weekdays:
+    name: "День начинается (будни)"
+    has_date: false
+    has_time: true
+    initial: "06:00:00"
+
+  day_time_weekends:
+    name: "День начинается (выходные)"
+    has_date: false
+    has_time: true
+    initial: "09:00:00"
+
+  last_kitchen_motion:
+    name: Last Kitchen Motion
+    has_date: true
+    has_time: true
+
+  last_kitchen_photos:
+    name: "Last Kitchen Photos"
+    has_date: true
+    has_time: true
+
+input_button:
+  radio_sleep_start:
+    name: "Radio sleep – START"
+
+  radio_sleep_stop:
+    name: "Radio sleep – STOP"
+
+  radio_sleep_reset:
+    name: "Radio sleep – RESET (00:00)"
+
+

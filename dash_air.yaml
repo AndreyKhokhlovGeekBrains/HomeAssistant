@@ -1,0 +1,372 @@
+title: Air Quality
+views:
+  - title: Home
+    path: home
+    icon: mdi:weather-cloudy
+    type: custom:grid-layout
+    layout:
+      grid-gap: 4px
+      grid-template-columns: 1fr 1fr 1fr
+      grid-template-rows: auto
+      grid-template-areas: |
+        "gauges      gauges      sensors"
+        "tion        philips     sensors"
+        "controls    controls    sensors"
+        "charts      charts      charts"
+      mediaquery:
+        '(max-width: 1200px)':
+          grid-template-columns: 1fr 1fr
+          grid-template-areas: |
+            "gauges      gauges"
+            "tion        philips"
+            "sensors     sensors"
+            "controls    controls"
+            "charts      charts"
+        '(max-width: 800px)':
+          grid-template-columns: 1fr
+          grid-template-areas: |
+            "gauges"
+            "tion"
+            "philips"
+            "sensors"
+            "controls"
+            "charts"
+
+    cards:
+      - type: custom:layout-card
+        view_layout:
+          grid-area: gauges
+        layout_type: grid
+        layout:
+          grid-template-columns: repeat(4, minmax(160px, 1fr))
+          grid-gap: 4px
+        cards:
+          - type: custom:canvas-gauge-card
+            entity: sensor.qingping_pm2_5
+            card_height: 160
+            shadow_height: 0%
+            gauge:
+              type: radial-gauge
+              units: µg/m³
+              title: PM2.5
+              minValue: 0
+              maxValue: 150
+              startAngle: 90
+              ticksAngle: 180
+              majorTicks:
+                - '0'
+                - '25'
+                - '50'
+                - '75'
+                - '100'
+                - '125'
+                - '150'
+              minorTicks: 4
+              strokeTicks: true
+              colorMajorTicks: '#555'
+              colorMinorTicks: '#aaa'
+              majorTicksFont: 20px sans-serif
+              minorTicksWidth: 1
+              majorTicksWidth: 2
+              valueBox: true
+              valueBoxPlace: center
+              valueBoxStroke: 0
+              colorValueBoxBackground: rgba(0,0,0,0)
+              colorValueText: '#000'
+              valueInt: 1
+              valueDec: 1
+              borders: false
+              borderShadowWidth: 0
+              colorPlate: transparent
+              colorTitle: '#000'
+              colorUnits: '#555'
+              highlights:
+                - from: 0
+                  to: 9
+                  color: rgba(0,200,0,0.85)
+                - from: 9
+                  to: 70
+                  color: rgba(255,215,0,0.85)
+                - from: 70
+                  to: 150
+                  color: rgba(255,0,0,0.75)
+          - type: custom:canvas-gauge-card
+            entity: sensor.qingping_co2
+            card_height: 160
+            shadow_height: 0%
+            gauge:
+              type: radial-gauge
+              units: ppm
+              title: CO₂
+              minValue: 400
+              maxValue: 2500
+              startAngle: 90
+              ticksAngle: 180
+              majorTicks:
+                - '400'
+                - '900'
+                - '1200'
+                - '1600'
+                - '2000'
+                - '2400'
+              minorTicks: 4
+              strokeTicks: true
+              colorMajorTicks: '#555'
+              colorMinorTicks: '#aaa'
+              majorTicksFont: 20px sans-serif
+              minorTicksWidth: 1
+              majorTicksWidth: 2
+              valueBox: true
+              valueBoxPlace: center
+              valueBoxStroke: 0
+              colorValueBoxBackground: rgba(0,0,0,0)
+              colorValueText: '#000'
+              valueInt: 3
+              valueDec: 0
+              borders: false
+              borderShadowWidth: 0
+              colorPlate: transparent
+              colorTitle: '#000'
+              colorUnits: '#555'
+              highlights:
+                - from: 400
+                  to: 800
+                  color: rgba(0,200,0,0.85)
+                - from: 800
+                  to: 1500
+                  color: rgba(255,215,0,0.85)
+                - from: 1500
+                  to: 2500
+                  color: rgba(255,0,0,0.75)
+          - type: custom:canvas-gauge-card
+            entity: sensor.qingping_humidity
+            card_height: 160
+            shadow_height: 0%
+            gauge:
+              type: radial-gauge
+              units: '%'
+              title: Humidity
+              minValue: 0
+              maxValue: 100
+              startAngle: 90
+              ticksAngle: 180
+              majorTicks:
+                - '0'
+                - '20'
+                - '40'
+                - '60'
+                - '80'
+                - '100'
+              minorTicks: 4
+              strokeTicks: true
+              colorMajorTicks: '#555'
+              colorMinorTicks: '#aaa'
+              majorTicksFont: 20px sans-serif
+              minorTicksWidth: 1
+              majorTicksWidth: 2
+              valueBox: true
+              valueBoxPlace: center
+              valueBoxStroke: 0
+              colorValueBoxBackground: rgba(0,0,0,0)
+              colorValueText: '#000'
+              valueInt: 2
+              valueDec: 1
+              borders: false
+              borderShadowWidth: 0
+              colorPlate: transparent
+              colorTitle: '#000'
+              colorUnits: '#555'
+              highlights:
+                - from: 0
+                  to: 35
+                  color: rgba(255,0,0,0.75)
+                - from: 35
+                  to: 40
+                  color: rgba(255,215,0,0.85)
+                - from: 40
+                  to: 55
+                  color: rgba(0,200,0,0.85)
+                - from: 55
+                  to: 65
+                  color: rgba(255,215,0,0.85)
+                - from: 65
+                  to: 100
+                  color: rgba(255,0,0,0.75)
+          - type: custom:canvas-gauge-card
+            entity: sensor.qingping_etvoc
+            card_height: 160
+            shadow_height: 0%
+            gauge:
+              type: radial-gauge
+              units: ppb
+              title: eTVOC
+              minValue: 0
+              maxValue: 300
+              startAngle: 90
+              ticksAngle: 180
+              majorTicks:
+                - '0'
+                - '50'
+                - '100'
+                - '150'
+                - '200'
+                - '250'
+                - '300'
+              minorTicks: 4
+              strokeTicks: true
+              colorMajorTicks: '#555'
+              colorMinorTicks: '#aaa'
+              majorTicksFont: 20px sans-serif
+              minorTicksWidth: 1
+              majorTicksWidth: 2
+              valueBox: true
+              valueBoxPlace: center
+              valueBoxStroke: 0
+              colorValueBoxBackground: rgba(0,0,0,0)
+              colorValueText: '#000'
+              valueInt: 2
+              valueDec: 1
+              borders: false
+              borderShadowWidth: 0
+              colorPlate: transparent
+              colorTitle: '#000'
+              colorUnits: '#555'
+              highlights:
+                - from: 0
+                  to: 37
+                  color: rgba(0,200,0,0.85)
+                - from: 37
+                  to: 120
+                  color: rgba(255,215,0,0.85)
+                - from: 120
+                  to: 300
+                  color: rgba(255,0,0,0.75)
+      - type: entities
+        view_layout:
+          grid-area: tion
+        title: Tion Settings
+        show_header_toggle: false
+        entities:
+          - entity: switch.tion_power
+            name: Tion Power
+            icon: mdi:power
+          - entity: number.tion_fan_speed
+            name: Tion (скорость)
+            icon: mdi:fan
+          - entity: number.tion_target_temperature
+            name: Air heating, °C
+            icon: mdi:thermometer
+          - entity: select.tion_light_intensity
+            name: Tion Light Intensity
+            icon: mdi:lightbulb-on-10
+          - entity: input_number.tion_min_step_min
+            name: Tion минимум времени на ступени (мин)
+            icon: mdi:timer-outline
+          - entity: input_number.co2_step_hyst
+            name: Tion гистерезис ступеней CO₂
+            icon: mdi:swap-vertical
+          - entity: sensor.tion_filters_resource
+            name: Tion Filter Resource
+            icon: mdi:filter-outline
+      - type: entities
+        view_layout:
+          grid-area: philips
+        title: Other Settings
+        show_header_toggle: false
+        entities:
+          - entity: input_datetime.day_time_weekdays
+            name: Day Time Weekdays
+            icon: mdi:clock-outline
+          - entity: input_datetime.day_time_weekends
+            name: Day Time Weekends
+            icon: mdi:clock-outline
+          - entity: input_datetime.night_time_start
+            name: Night Time Start
+            icon: mdi:clock-outline
+          - entity: switch.philips_air_purifier_power
+            name: Philips Power
+            icon: mdi:power
+          - entity: sensor.philips_preset_mode
+            name: Philips Mode
+          - entity: switch.kitchen_exhaust_fan
+            name: Kitchen Exhaust Fan
+          - entity: sensor.dmaker_fan_power
+            name: Fan Power
+          - entity: sensor.dmaker_fan_preset_mode
+            name: Smart Tower Fan Mode
+          - entity: sensor.dmaker_fan_oscillating
+            name: Smart Tower Fan Oscillating
+          - entity: select.dmaker_p45_9247_horizontal_swing_included_angle
+            name: Smart Tower Fan Swing Angle
+      - type: entities
+        view_layout:
+          grid-area: sensors
+        title: Air Sensors
+        show_header_toggle: false
+        entities:
+          - entity: sensor.qingping_temperature
+            name: Temperature
+          - entity: sensor.qingping_humidity
+            name: Humidity
+          - entity: sensor.qingping_noise
+            name: Noise
+          - entity: sensor.qingping_pm2_5
+            name: PM2.5
+          - entity: sensor.qingping_pm10
+            name: PM10
+          - entity: sensor.qingping_etvoc
+            name: eTVOC
+          - entity: sensor.qingping_co2
+            name: CO2
+          - entity: sensor.galaxy_a5_battery_level
+            name: Galaxy A5 Battery
+          - entity: sensor.galaxy_a5_battery_state
+            name: Galaxy A5 Charging
+          - entity: binary_sensor.andrey_home_stable
+            name: Andrey stable
+          - entity: binary_sensor.andrey_home_final
+            name: Andrey final
+
+          - entity: input_boolean.ceiling_light_intent
+            name: Люстра
+          - entity: light.nochnik
+            name: Ночник
+          - entity: timer.aroma_lock
+            name: Aroma Lock
+
+          - type: button
+            name: Cancel Aroma
+            icon: mdi:scent
+            tap_action:
+              action: call-service
+              service: timer.cancel
+              target:
+                entity_id: timer.aroma_lock
+
+      - type: custom:layout-card
+        view_layout:
+          grid-area: charts
+        layout_type: grid
+        layout:
+          grid-template-columns: repeat(3, minmax(280px, 1fr))
+          grid-gap: 12px
+        cards:
+          - type: history-graph
+            title: PM2.5 / PM10
+            hours_to_show: 24
+            refresh_interval: 300
+            entities:
+              - sensor.qingping_pm2_5
+              - sensor.qingping_pm10
+          - type: history-graph
+            title: CO₂
+            hours_to_show: 24
+            refresh_interval: 300
+            entities:
+              - sensor.qingping_co2
+          - type: history-graph
+            title: eTVOC
+            hours_to_show: 24
+            refresh_interval: 300
+            entities:
+              - sensor.qingping_etvoc

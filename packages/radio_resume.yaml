@@ -1,0 +1,59 @@
+script:
+  tts_with_radio_resume:
+    alias: "TTS – with radio resume"
+    mode: single
+    fields:
+      message:
+        description: "Text to speak via TTS"
+        example: "Water level in the humidifier is low."
+
+    sequence:
+      - variables:
+          # Global default TTS volume
+          _tts_volume: "{{ states('input_number.tts_volume_default') | float(0.8) }}"
+
+          # Volume before we touch it (fallback to 0.5 if unknown)
+          _prev_volume: >
+            {{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.5) }}
+
+          # Was the player actually playing (radio/music) at the moment?
+          _radio_was_playing: >
+            {{ is_state('media_player.galaxy_a5_2017', 'playing') }}
+
+      # Stop current playback (if any)
+      - service: media_player.media_stop
+        target:
+          entity_id: media_player.galaxy_a5_2017  
+
+      # Set TTS volume
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.galaxy_a5_2017
+        data:
+          volume_level: "{{ _tts_volume }}"
+
+      # Say the message (EN text comes from the 'message' field)
+      - service: script.say_auto_lang
+        data:
+          entity_id: media_player.galaxy_a5_2017
+          message: "{{ message }}"
+
+      # If radio/music was playing before TTS — resume radio after short delay
+      - if:
+          - condition: template
+            value_template: "{{ _radio_was_playing }}"
+        then:
+          # Wait based on the TTS text length
+          - service: script.tts_wait_by_text
+            data:
+              message: "{{ message }}"
+
+          # Restore previous volume
+          - service: media_player.volume_set
+            target:
+              entity_id: media_player.galaxy_a5_2017
+            data:
+              volume_level: "{{ _prev_volume }}"
+
+          # Start radio again (current station from your script)
+          - service: script.radio_play_current

@@ -1,0 +1,156 @@
+automation:
+  - id: smartmi_water_level_reminder
+    alias: "Smartmi – напоминание долить воду"
+    mode: single
+
+    # Триггер: уровень воды = 1 (middle)
+    trigger:
+      - platform: state
+        entity_id: sensor.zhimi_ca6_9119_water_level
+        attribute: humidifier.water_level
+        to: 1
+
+    action:
+      # 0) Ждём до 13 часов, но выходим раньше, если уровень перестал быть 1
+      - wait_for_trigger:
+          - platform: template
+            value_template: >
+              {{ state_attr('sensor.zhimi_ca6_9119_water_level',
+                            'humidifier.water_level') | int(-1) != 1 }}
+        timeout: "13:00:00"
+        continue_on_timeout: true
+
+      # 1) Текущее значение уровня воды после ожидания
+      - variables:
+          _water_level: >
+            {{ state_attr('sensor.zhimi_ca6_9119_water_level',
+                          'humidifier.water_level') | int(-1) }}
+          _msg: >
+            The water level in the Smartmi humidifier is getting low.
+            Please refill the tank in the next few hours.
+          _telegram_chat: 390171493
+      # 2) Если датчик в странном состоянии (уровень не 0/1/2) — просто выходим
+      - condition: template
+        value_template: >
+          {{ _water_level in [0, 1, 2] }}
+
+      # 3) Разделяем случаи:
+      #    - если ждём 13 часов и уровень так и остался 1 → обычное "мягкое" напоминание
+      #    - если ожидание оборвалось и уровень стал 0 → аварийное напоминание сразу
+      #    - если ожидание оборвалось и уровень стал 2 → просто выходим (ты долил воду)
+
+      - choose:
+          # === СЦЕНАРИЙ 1: бак высох (уровень резко стал 0) → срочное сообщение ===
+          # wait.completed == true значит, что он дождался изменения состояния с 1 на любое другое, а таймен не закончил отсчет
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ wait.completed and _water_level == 0 }}
+            sequence:
+              - choose:
+                  # ДЕНЬ: 09:00–23:00 → TTS + Telegram
+                  - conditions:
+                      - condition: time
+                        after: "09:00:00"
+                        before: "23:00:00"
+                    sequence:
+                      - service: script.tts_with_radio_resume
+                        data:
+                          message: >
+                            Smartmi humidifier: water tank is empty. Water level is zero.
+                            Please refill it now.
+                      - service: telegram_bot.send_message
+                        data:
+                          target: "{{ _telegram_chat }}"
+                          message: >
+                            ⚠ Smartmi humidifier: water tank is empty (level 0).
+                            Please refill it now.
+                # НОЧЬ (23:00–09:00): только Telegram, без TTS
+                default:
+                  - service: telegram_bot.send_message
+                    data:
+                      target: "{{ _telegram_chat }}"
+                      message: >
+                        ⚠ Smartmi humidifier: water tank is empty (level 0).
+                        Please refill it now.
+
+          # === СЦЕНАРИЙ 2: прошло 13 часов, и всё это время уровень был 1 ===
+          # (wait.completed == false → сработал timeout)
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ not wait.completed and _water_level == 1 }}
+            sequence:
+              # Пересчитаем служебные переменные для дневной/ночной логики
+              - variables:
+                  _hour: "{{ now().hour }}"
+
+              # Если вдруг бак уже полный (на всякий случай) — выходим
+              - condition: template
+                value_template: "{{ _water_level < 2 }}"
+
+              # Дневной / ночной сценарий как раньше
+              - choose:
+                  # --- ДЕНЬ: сразу TTS + Telegram ---
+                  - conditions:
+                      - condition: time
+                        after: "12:00:00"
+                        before: "23:59:59"
+                    sequence:
+                      - service: script.tts_with_radio_resume
+                        data:
+                          message: "{{ _msg }}"
+                      - service: telegram_bot.send_message
+                        data:
+                          target: "{{ _telegram_chat }}"
+                          message: "{{ _msg }}"
+
+                # --- НОЧЬ: ждём либо утреннюю рутину, либо 12:00 ---
+                default:
+                  # 1) Ждём: или запуска утренней рутины, или наступления 12:00
+                  - wait_for_trigger:
+                      - platform: event
+                        event_type: automation_triggered
+                        event_data:
+                          entity_id: automation.morning_routine_night_light_weather_radio_reminder
+                      - platform: time
+                        at: "12:00:00"
+
+                  # 2) После ожидания ещё раз проверяем уровень воды
+                  - variables:
+                      _water_level: >
+                        {{ state_attr('sensor.zhimi_ca6_9119_water_level',
+                                      'humidifier.water_level') | int(-1) }}
+                  - condition: template
+                    value_template: "{{ _water_level < 2 }}"
+
+                  # 3) Развилка: что именно нас разбудило?
+                  - choose:
+                      # Вариант 1: сработала утренняя рутина → даём 10 минут, потом TTS + телега
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ wait.trigger is not none and wait.trigger.platform == 'event' }}
+                        sequence:
+                          - delay: "00:10:00"
+                          - service: script.tts_with_radio_resume
+                            data:
+                              message: "{{ _msg }}"
+                          - service: telegram_bot.send_message
+                            data:
+                              target: "{{ _telegram_chat }}"
+                              message: "{{ _msg }}"
+
+                      # Вариант 2: до 12:00 утренняя рутина не запустилась → только телега
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ wait.trigger is not none and wait.trigger.platform == 'time' }}
+                        sequence:
+                          - service: telegram_bot.send_message
+                            data:
+                              target: "{{ _telegram_chat }}"
+                              message: "{{ _msg }}"
+
+      # === СЦЕНАРИЙ 3 (default): уровень стал 2 или что-то иное → просто выходим ===
+      # Ничего не делаем: ты долил воду или сенсор в непонятном состоянии.

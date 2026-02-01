@@ -1,0 +1,44 @@
+automation:
+  - id: andrey_away_lights_off
+    alias: "Presence • Andrey away → lights off"
+    mode: single
+
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.andrey_home_final
+        from: "on"
+        to: "off"
+
+    # Доп. защита: только если сенсор реально показывает, что тебя нет
+    condition:
+      - condition: state
+        entity_id: binary_sensor.andrey_home_final
+        state: "off"
+
+    action:
+      # 1) Гасим подсветку Tion (0 = отключено)
+      - service: select.select_option
+        target:
+          entity_id: select.tion_light_intensity
+        data:
+          option: "0"
+
+      # 2) Гасим подсветку увлажнителя
+      - service: select.select_option
+        target:
+          entity_id: select.zhimi_ca6_9119_brightness
+        data:
+          option: Dark
+
+      # 3) Выключаем ночник и свет в коридоре (замени entity_id на свой)
+      - service: light.turn_off
+        target:
+          entity_id:
+            - light.nochnik
+            - light.doorway_switch
+
+      # 4) Останавливаем радио/музыку на Galaxy A5 (если играло)
+      - service: media_player.media_stop
+        target:
+          entity_id: media_player.galaxy_a5_2017
+# *** *** *** *** *** *** ***

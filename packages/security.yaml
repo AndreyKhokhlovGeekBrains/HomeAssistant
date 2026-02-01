@@ -1,0 +1,95 @@
+automation:
+  - id: kitchen_motion_snapshots
+    alias: "Security • Kitchen motion → snapshots (3 photos, 30min cooldown)"
+    mode: single
+    trigger:
+      - platform: webhook
+        webhook_id: ipwebcam_kitchen_motion
+
+    condition:
+      # 1) прошло ли 30 минут с последней ФОТОСЕССИИ
+      - condition: template
+        value_template: >
+          {% set last = state_attr('input_datetime.last_kitchen_photos', 'timestamp') | float(0) %}
+          {{ (as_timestamp(now()) - last) > 1800 }}
+
+      # 2) и только если тебя нет дома
+      - condition: state
+        entity_id: binary_sensor.andrey_home_final
+        state: "off"
+
+    action:
+      # фиксируем момент сработки и имена файлов
+      - variables:
+          ts: "{{ now().timestamp() | int }}"
+          pic1: "/config/www/pics/kitchen_1_{{ ts }}.jpg"
+          pic2: "/config/www/pics/kitchen_2_{{ ts }}.jpg"
+          pic3: "/config/www/pics/kitchen_3_{{ ts }}.jpg"
+
+      # ПРОБНЫЙ снимок — только чтобы разбудить камеру
+      - service: camera.snapshot
+        data:
+          entity_id: camera.kitchen_cam_motioneye
+          filename: "/config/www/pics/kitchen_warmup.jpg"
+
+      # чуть ждём, чтобы поток стабилизировался
+      - delay: "00:00:02"
+
+      # фото №1 (уже реальное, пойдёт в Telegram)
+      - service: camera.snapshot
+        data:
+          entity_id: camera.kitchen_cam_motioneye
+          filename: "{{ pic1 }}"
+      - delay: "00:00:08"
+
+      # фото №2
+      - service: camera.snapshot
+        data:
+          entity_id: camera.kitchen_cam_motioneye
+          filename: "{{ pic2 }}"
+      - delay: "00:00:08"
+
+      # фото №3
+      - service: camera.snapshot
+        data:
+          entity_id: camera.kitchen_cam_motioneye
+          filename: "{{ pic3 }}"
+
+      # ждём, чтобы ТРИ файла 100% успели записаться
+      - delay: "00:00:50"
+
+      # 🔒 финальная проверка: ты всё ещё не дома?
+      - condition: state
+        entity_id: binary_sensor.andrey_home_final
+        state: "off"
+
+      # обновляем время последней фотосессии (только если мы реально будем слать фото)
+      - service: input_datetime.set_datetime
+        data:
+          entity_id: input_datetime.last_kitchen_photos
+          timestamp: "{{ ts }}"
+
+      # отправка 1/3
+      - service: telegram_bot.send_photo
+        data:
+          target: 390171493            # chat_id
+          file: "{{ pic1 }}"
+          caption: "Движение на кухне (1/3)"
+
+      - delay: "00:00:05"
+
+      # отправка 2/3
+      - service: telegram_bot.send_photo
+        data:
+          target: 390171493
+          file: "{{ pic2 }}"
+          caption: "Движение на кухне (2/3)"
+
+      - delay: "00:00:05"
+
+      # отправка 3/3
+      - service: telegram_bot.send_photo
+        data:
+          target: 390171493
+          file: "{{ pic3 }}"
+          caption: "Движение на кухне (3/3)"

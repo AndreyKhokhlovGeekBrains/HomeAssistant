@@ -1,0 +1,411 @@
+# =========================
+# packages/air/base.yaml
+# Philips (preset_mode) + Tion (number.*), CO₂-ступени и подогрев по ΔT
+# Источники:
+#   - Philips: fan.philips_air_purifier  (auto / sleep / strong)
+#   - Tion speed: number.tion_fan_speed  (1..7)
+#   - Tion heat:  number.tion_target_temperature (0..30; 0 = выкл)
+#   - PM2.5:      sensor.qingping_pm2_5
+#   - CO₂:        sensor.qingping_co2
+#   - Tin:        sensor.qingping_temperature
+#   - Tout:       state_attr('weather.forecast_home','temperature') -> sensor.outdoor_temp (см. template ниже)
+# =========================
+
+# ── Service wrappers (централизуем вызовы) ────────────────────
+script:
+  philips_mode_auto:
+    alias: "Philips → AUTO"
+    sequence:
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.philips_air_purifier
+        data:
+          preset_mode: "auto"
+
+  philips_mode_sleep:
+    alias: "Philips → SLEEP"
+    sequence:
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.philips_air_purifier
+        data:
+          preset_mode: "sleep"
+
+  philips_mode_turbo:
+    alias: "Philips → STRONG"
+    sequence:
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.philips_air_purifier
+        data:
+          preset_mode: "strong"
+
+  tion_set_speed:
+    alias: "Tion → задать скорость (1–7)"
+    mode: restart
+    fields:
+      speed:
+        description: "Скорость 1–7"
+        example: 3
+    sequence:
+      - service: number.set_value
+        target:
+          entity_id: number.tion_fan_speed
+        data:
+          value: "{{ speed | int(1) }}"
+
+  tion_set_temp:
+    alias: "Tion → задать подогрев (°C)"
+    mode: restart
+    fields:
+      temp:
+        description: "Уставка подогрева, °C (0 = выкл)"
+        example: 20
+    sequence:
+      - service: number.set_value
+        target:
+          entity_id: number.tion_target_temperature
+        data:
+          value: "{{ temp | float(0) }}"
+
+  tion_light_day:
+    alias: "Tion → подсветка ДЕНЬ (50%) + Smartmi BRIGHTEST"
+    mode: restart
+    sequence:
+      - variables:
+          # --- Smartmi: подсветка ДЕНЬ (Brightest) ---
+          _hum_opts: "{{ state_attr('select.zhimi_ca6_9119_brightness','options') or [] }}"
+          _hum_day_opt: >-
+            {% set b = _hum_opts | select('equalto','Brightest') | list %}
+            {{ 'Brightest' if b|length>0 else (_hum_opts[-1] if _hum_opts|length>0 else none) }}
+
+      # Tion: яркость фиксированно 50
+      - service: select.select_option
+        target:
+          entity_id: select.tion_light_intensity
+        data:
+          option: "50"
+
+      # Smartmi: подсветка BRIGHTEST (если опция найдена)
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ _hum_day_opt is not none }}"
+            sequence:
+              - service: select.select_option
+                target:
+                  entity_id: select.zhimi_ca6_9119_brightness
+                data:
+                  option: "{{ _hum_day_opt }}"
+
+  tion_light_night:
+    alias: "Tion → подсветка НОЧЬ (0%) + Smartmi DARK"
+    mode: restart
+    sequence:
+      - variables:
+          # --- Smartmi: подсветка НОЧЬ (Dark) ---
+          _hum_opts: "{{ state_attr('select.zhimi_ca6_9119_brightness','options') or [] }}"
+          _hum_night_opt: >-
+            {% set d = _hum_opts | select('equalto','Dark') | list %}
+            {{ 'Dark' if d|length>0 else (_hum_opts[0] if _hum_opts|length>0 else none) }}
+
+      # Tion: яркость фиксированно 0
+      - service: select.select_option
+        target:
+          entity_id: select.tion_light_intensity
+        data:
+          option: "0"
+
+      # Smartmi: подсветка DARK (если опция найдена)
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ _hum_night_opt is not none }}"
+            sequence:
+              - service: select.select_option
+                target:
+                  entity_id: select.zhimi_ca6_9119_brightness
+                data:
+                  option: "{{ _hum_night_opt }}"
+
+# ── Automations (одним списком; ключ automation в файле ОДИН) ─
+automation:
+  # Philips: AUTO при PM2.5 ≥ on (задержка по helper’у)
+  - id: air_philips_on_auto
+    alias: "Air • Philips: AUTO при PM2.5 ≥ on (с задержкой)"
+    trigger:
+      - platform: state
+        entity_id: sensor.qingping_pm2_5
+    condition:
+      # Блокировка очистителя во время ароматизации
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "idle"
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(0) >= states('input_number.tion_pm25_on')|int(12) }}
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(0) < states('input_number.pm25_turbo')|int(70) }}
+    # AUTO
+    action:
+      - delay:
+          minutes: "{{ states('input_number.pm25_on_for_min')|int(1) }}"
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(0) >= states('input_number.tion_pm25_on')|int(12)
+            and states('sensor.qingping_pm2_5')|int(0) < states('input_number.pm25_turbo')|int(70) }}
+      - service: script.turn_on
+        target:
+          entity_id: script.philips_mode_auto
+
+  # Philips: STRONG при PM2.5 ≥ turbo (без задержки)
+  - id: air_philips_turbo
+    alias: "Air • Philips: STRONG при PM2.5 ≥ turbo"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.qingping_pm2_5
+    condition:
+      # Блокировка очистителя во время ароматизации
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "idle"
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(0) >= states('input_number.pm25_turbo')|int(70) }}
+    # STRONG
+    action:
+      - service: script.turn_on
+        target:
+          entity_id: script.philips_mode_turbo
+
+  # Philips: SLEEP при PM2.5 ≤ off (задержка по helper’у)
+  - id: air_philips_sleep
+    alias: "Air • Philips: SLEEP при PM2.5 ≤ off (с задержкой)"
+    trigger:
+      - platform: state
+        entity_id: sensor.qingping_pm2_5
+    
+    condition:
+    # Блокировка очистителя во время ароматизации
+      - condition: state
+        entity_id: timer.aroma_lock
+        state: "idle"
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(999) <= states('input_number.tion_pm25_off')|int(9) }}
+    # SLEEP
+    action:
+      - delay:
+          minutes: "{{ states('input_number.pm25_off_for_min')|int(1) }}"
+      - condition: template
+        value_template: >
+          {{ states('sensor.qingping_pm2_5')|int(999) <= states('input_number.tion_pm25_off')|int(9)
+            and states('sensor.qingping_pm2_5')|int(0) < states('input_number.pm25_turbo')|int(70) }}
+      - service: script.turn_on
+        target:
+          entity_id: script.philips_mode_sleep
+
+  # Tion: применить желаемую скорость (с минимумом времени на ступени)
+  - id: air_tion_apply_speed
+    alias: "Air • Tion: применить скорость (с минимумом времени на ступени)"
+    mode: single
+    trigger:
+      # 1) когда меняется желаемая скорость
+      - platform: state
+        entity_id: sensor.tion_desired_speed
+      # 2) и раз в минуту, чтобы “дочитать” условие, когда пройдет min_dur
+      - platform: time_pattern
+        minutes: "/1"
+
+    condition:
+      - condition: template
+        value_template: >-
+          {% set desired = states('sensor.tion_desired_speed')|int(1) %}
+          {% set current = states('number.tion_fan_speed')|int(1) %}
+          {# если уже совпадает, ничего делать не надо #}
+          {% if desired == current %}
+            {{ false }}
+          {% else %}
+            {% set min_dur = states('input_number.tion_min_step_min')|int(5) * 60 %}
+            {% set last = states.number.tion_fan_speed.last_changed %}
+            {{ (as_timestamp(now()) - as_timestamp(last)) > min_dur }}
+          {% endif %}
+
+    action:
+      - variables:
+          lvl: "{{ states('sensor.tion_desired_speed')|int(1) }}"
+      - service: script.tion_set_speed
+        data:
+          speed: "{{ lvl }}"
+
+  # Tion: авто-подстройка подогрева по фактической температуре в комнате
+  - id: air_tion_auto_tune_temp
+    alias: "Air • Tion: авто-подстройка подогрева (23–24°C)"
+    mode: single
+
+    # Запускаем каждый час, в ноль минут
+    trigger:
+      - platform: time_pattern
+        minutes: "0"
+
+    # Переменные для удобства
+    variables:
+      t_room: "{{ states('sensor.qingping_temperature') | float(23) }}"
+      t_low: 23        # нижняя граница комфортного диапазона
+      t_high: 24       # верхняя граница комфортного диапазона
+      t_min: 0         # минимально допустимая уставка Tion
+      t_max: 30        # максимально допустимая уставка Tion
+      t_current: "{{ states('number.tion_target_temperature') | int(0) }}"
+
+    # Условий нет — просто каждый час оцениваем ситуацию
+    condition: []
+
+    action:
+      - choose:
+          # 1) В комнате холоднее 23°C → пробуем сделать теплее (+1°), но не выше 30°
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {{ t_room < t_low and t_current < t_max }}
+            sequence:
+              - service: script.tion_set_temp
+                data:
+                  temp: "{{ (t_current + 1) | int }}"
+
+          # 2) В комнате жарче 24°C → пробуем охладить (-1°), но не ниже 0°
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {{ t_room > t_high and t_current > t_min }}
+            sequence:
+              - service: script.tion_set_temp
+                data:
+                  temp: "{{ (t_current - 1) | int }}"
+
+        # 3) Иначе (температура в диапазоне 23–24° или достигнуты пределы 0/30) — ничего не делаем
+        default: []
+
+
+  # НОЧЬ — по универсальному времени
+  - id: tion_light_to_night
+    alias: "Tion • подсветка: НОЧЬ (по расписанию)"
+    trigger:
+      - platform: time
+        at: input_datetime.night_time_start
+    action:
+      - service: script.tion_light_night
+
+  # ДЕНЬ (будни) — по универсальному времени
+  - id: tion_light_to_day_weekdays
+    alias: "Tion • подсветка: ДЕНЬ (будни, по расписанию)"
+    trigger:
+      - platform: time
+        at: input_datetime.day_time_weekdays
+    condition:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
+    action:
+      - service: script.tion_light_day
+
+  # ДЕНЬ (выходные) — по универсальному времени
+  - id: tion_light_to_day_weekends
+    alias: "Tion • подсветка: ДЕНЬ (выходные, по расписанию)"
+    trigger:
+      - platform: time
+        at: input_datetime.day_time_weekends
+    condition:
+      - condition: time
+        weekday: [sat, sun]
+    action:
+      - service: script.tion_light_day
+
+# ── Automations • Fan Air Mixing ───────────────────────────────────────────────
+  # 1. Ежечасное перемешивание воздуха
+  - id: fan_air_mixing_hourly
+    alias: "Fan • Air mixing hourly (10 min every hour)"
+    mode: restart
+    trigger:
+      - platform: time_pattern
+        minutes: "0"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.andrey_home_stable
+        state: "on"
+
+      # Allow ONLY outside the night window defined by input_datetime (helpers.yaml)
+      # Night window: [night_time_start .. day_time_*]
+      - condition: template
+        value_template: >-
+          {% set now_t = now().strftime('%H:%M:%S') %}
+          {% set night_start = states('input_datetime.night_time_start') %}
+          {% set day_wd = states('input_datetime.day_time_weekdays') %}
+          {% set day_we = states('input_datetime.day_time_weekends') %}
+          {% set is_weekend = now().weekday() in [5, 6] %}
+          {% set day_start = day_we if is_weekend else day_wd %}
+
+          {# If window crosses midnight: allow when now is NOT between night_start and day_start #}
+          {% if night_start <= day_start %}
+            {{ not (night_start <= now_t < day_start) }}
+          {% else %}
+            {{ not (now_t >= night_start or now_t < day_start) }}
+          {% endif %}
+
+    action:
+      - service: fan.turn_on
+        target:
+          entity_id: fan.dmaker_p45_9247_fan
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.dmaker_p45_9247_fan
+        data:
+          preset_mode: "Natural Wind"
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dmaker_p45_9247_horizontal_swing
+      - service: select.select_option
+        target:
+          entity_id: select.dmaker_p45_9247_horizontal_swing_included_angle
+        data:
+          option: "90"
+      - delay: "00:10:00"
+      - service: fan.turn_off
+        target:
+          entity_id: fan.dmaker_p45_9247_fan
+
+  # 2. Перемешивание при повышенном PM2.5
+  - id: fan_air_mixing_pm25
+    alias: "Fan • Air mixing when PM2.5 > 70"
+    mode: restart
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.qingping_pm2_5
+        above: 70
+        for:
+          minutes: "{{ states('input_number.exhaust_off_delay_min')|int(1) }}"
+    # condition:
+    #   - condition: state
+    #     entity_id: binary_sensor.andrey_home_stable
+    #     state: "on"
+    action:
+      - service: fan.turn_on
+        target:
+          entity_id: fan.dmaker_p45_9247_fan
+      - service: fan.set_preset_mode
+        target:
+          entity_id: fan.dmaker_p45_9247_fan
+        data:
+          preset_mode: "Natural Wind"
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dmaker_p45_9247_horizontal_swing
+      - service: select.select_option
+        target:
+          entity_id: select.dmaker_p45_9247_horizontal_swing_included_angle
+        data:
+          option: "90"
+      - delay: "00:10:00"
+      - service: fan.turn_off
+        target:
+          entity_id: fan.dmaker_p45_9247_fan

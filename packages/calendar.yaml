@@ -1,0 +1,146 @@
+automation:
+  - id: calendar_announce_when_home
+    alias: "Calendar event announcement (home-aware)"
+    mode: single
+
+    trigger:
+      # 1) Normal case — fire 1 minute before event starts
+      - platform: calendar
+        entity_id: calendar.google_ics
+        event: start
+        offset: "-00:01:00"
+
+      # 2) Fallback — if calendar loaded late and immediately became "on"
+      - platform: state
+        entity_id: calendar.google_ics
+        to: "on"
+
+    action:
+      # Common variables: event text, start time, TTS volume, previous volume
+      - variables:
+          cal_msg: >
+            {% if trigger.platform == 'calendar' %}
+              {{ trigger.calendar_event.summary | default('Calendar event') }}
+            {% else %}
+              {{ state_attr('calendar.google_ics', 'message') or 'Calendar event' }}
+            {% endif %}
+
+          cal_start: >
+            {% if trigger.platform == 'calendar' %}
+              {{ trigger.calendar_event.start }}
+            {% else %}
+              {{ state_attr('calendar.google_ics', 'start_time') }}
+            {% endif %}
+
+          # Global default TTS volume
+          _tts_volume: "{{ states('input_number.tts_volume_default') | float(0.8) }}"
+
+          # Volume before we touch it (fallback to 0.5 if unknown)
+          _prev_volume: >
+            {{ state_attr('media_player.galaxy_a5_2017', 'volume_level') | float(0.5) }}
+
+      - choose:
+          # === BRANCH 1: you are at home — announce immediately ===
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.andrey_home_stable
+                state: "on"
+            sequence:
+              # Was the player actually playing (radio/music) at the moment?
+              - variables:
+                  _radio_was_playing: >
+                    {{ is_state('media_player.galaxy_a5_2017', 'playing') }}
+
+              - service: media_player.media_stop
+                target:
+                  entity_id: media_player.galaxy_a5_2017  
+
+              # Set TTS volume
+              - service: media_player.volume_set
+                target:
+                  entity_id: media_player.galaxy_a5_2017
+                data:
+                  volume_level: "{{ _tts_volume }}"
+
+              # Say calendar message
+              - service: script.say_auto_lang
+                data:
+                  entity_id: media_player.galaxy_a5_2017
+                  message: >
+                    A new calendar event has just started: "{{ cal_msg }}".
+                    {% if cal_start %}
+                      Start: {{ as_timestamp(cal_start) | timestamp_custom('%Y-%m-%d at %H:%M') }}.
+                    {% endif %}
+
+              # If radio/music was playing before TTS — resume radio after short delay
+              - if:
+                  - condition: template
+                    value_template: "{{ _radio_was_playing }}"
+                then:
+                  # Give TTS some time to finish
+                  - delay: "00:00:17"
+
+                  # Restore previous volume
+                  - service: media_player.volume_set
+                    target:
+                      entity_id: media_player.galaxy_a5_2017
+                    data:
+                      volume_level: "{{ _prev_volume }}"
+
+                  # Start radio again (current station from your script)
+                  - service: script.radio_play_current
+
+        default:
+          # === BRANCH 2: you were away — announce after you come home ===
+
+          # Wait until presence becomes on (max 6 hours)
+          - wait_for_trigger:
+              - platform: state
+                entity_id: binary_sensor.andrey_home_stable
+                to: "on"
+            timeout: "06:00:00"
+            continue_on_timeout: false
+
+          # Extra 10 minutes after arrival
+          - delay: "00:10:00"
+
+          # Was the player playing at the announcement moment?
+          - variables:
+              _radio_was_playing: >
+                {{ is_state('media_player.galaxy_a5_2017', 'playing') }}
+
+          - service: media_player.media_stop
+            target:
+              entity_id: media_player.galaxy_a5_2017
+
+          # Set TTS volume
+          - service: media_player.volume_set
+            target:
+              entity_id: media_player.galaxy_a5_2017
+            data:
+              volume_level: "{{ _tts_volume }}"
+
+          # Say calendar message
+          - service: script.say_auto_lang
+            data:
+              entity_id: media_player.galaxy_a5_2017
+              message: >
+                A new calendar event has started while you were away: "{{ cal_msg }}".
+                {% if cal_start %}
+                  Start: {{ as_timestamp(cal_start) | timestamp_custom('%Y-%m-%d at %H:%M') }}.
+                {% endif %}
+
+          # If radio/music was playing before TTS — resume radio after short delay
+          - if:
+              - condition: template
+                value_template: "{{ _radio_was_playing }}"
+            then:
+              - delay: "00:00:17"
+
+              - service: media_player.volume_set
+                target:
+                  entity_id: media_player.galaxy_a5_2017
+                data:
+                  volume_level: "{{ _prev_volume }}"
+
+              - service: script.radio_play_current

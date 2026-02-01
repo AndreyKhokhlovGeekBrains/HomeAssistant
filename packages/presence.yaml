@@ -1,0 +1,56 @@
+automation:
+  - id: reset_manual_presence_when_away
+    alias: "Reset manual presence when Away"
+    mode: single
+    trigger:
+      # Main: becomes Away
+      - platform: state
+        entity_id: switch.presenceflag
+        to: "on"   # ON = Away
+
+      # Fix: user turns manual ON while we are already Away
+      - platform: state
+        entity_id: input_boolean.andrey_manual_presence
+        to: "on"
+
+    condition:
+      # Run only if we are Away right now
+      - condition: state
+        entity_id: switch.presenceflag
+        state: "on"
+
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.andrey_manual_presence
+
+  - id: refresh_andrey_home_final_after_manual
+    alias: "Refresh Andrey home final after manual (60s)"
+    mode: restart
+    trigger:
+      - platform: state
+        entity_id: input_boolean.andrey_manual_presence
+    action:
+      - delay:
+          seconds: 60
+      # Force template re-evaluation by touching a dependency
+      - service: homeassistant.update_entity
+        target:
+          entity_id: binary_sensor.andrey_home_final
+
+# *** *** ***
+  - id: notify_andrey_home_stable_change
+    alias: "Notify: Andrey home (stable) changed"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.andrey_home_stable
+
+    action:
+      - service: telegram_bot.send_message
+        data:
+          target: 390171493   # chat_id
+          message: >-
+            Andrey home (stable) changed:
+            {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
+
