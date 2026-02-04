@@ -1,0 +1,62 @@
+# Presence sanity check:
+# Notify if Home is ON for ~6 hours with no kitchen motion during "daytime".
+# On weekdays, checks only after workday_home_time. Anti-spam: once per 3 hours.
+automation:
+  - id: presence_motion_sanity_check_long
+    alias: "Presence sanity check: 6h home, no motion (daytime)"
+    trigger:
+      - platform: time_pattern
+        minutes: "/30"
+
+    condition:
+      # We think Andrey is home
+      - condition: state
+        entity_id: binary_sensor.andrey_home_final
+        state: "on"
+
+      # Daytime window based on helpers
+      - condition: template
+        value_template: >-
+          {% set now_t = now().time() %}
+          {% set night_start = strptime(states('input_datetime.night_time_start'), '%H:%M:%S').time() %}
+          {% set day_start = (
+               strptime(states('input_datetime.day_time_weekends'), '%H:%M:%S').time()
+               if now().weekday() >= 5
+               else strptime(states('input_datetime.day_time_weekdays'), '%H:%M:%S').time()
+             ) %}
+          {{ now_t >= day_start and now_t < night_start }}
+
+      # Weekdays: only after workday_home_time (weekends always allowed)
+      - condition: template
+        value_template: >-
+          {% set t = strptime(states('input_datetime.workday_home_time'), '%H:%M:%S').time() %}
+          {{ now().weekday() >= 5 or now().time() >= t }}
+
+      # No motion for ~6 hours (based on input_datetime)
+      - condition: template
+        value_template: >-
+          {% set last = states('input_datetime.last_kitchen_motion') %}
+          {{ last in ['unknown','unavailable','']
+             or (now() - as_datetime(last)).total_seconds() > 21600 }}
+
+      # Anti-spam: notify at most once per 3 hours
+      - condition: template
+        value_template: >-
+          {% set last = states('input_datetime.presence_sanity_last_notified') %}
+          {{ last in ['unknown','unavailable','']
+             or (now() - as_datetime(last)).total_seconds() > 10800 }}
+
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.presence_sanity_last_notified
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+      - service: telegram_bot.send_message
+        data:
+          target: 390171493
+          message: >-
+            ⚠️ Presence sanity check:
+            Home = ON for a long time, but no kitchen motion for ~6 hours (daytime).
+            Please confirm presence manually.

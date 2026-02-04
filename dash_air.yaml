@@ -304,8 +304,10 @@ views:
         title: Air Sensors
         show_header_toggle: false
         entities:
+          - entity: sensor.outdoor_temp
+            name: Temperature outdoor
           - entity: sensor.qingping_temperature
-            name: Temperature
+            name: Temperature indoor
           - entity: sensor.qingping_humidity
             name: Humidity
           - entity: sensor.qingping_noise

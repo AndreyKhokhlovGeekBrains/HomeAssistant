@@ -175,20 +175,14 @@ template:
         delay_off:
           minutes: 1
 
-      # - name: "Voice announcements allowed"
-      #   unique_id: voice_announcements_allowed
-      #   state: >-
-      #     {{ states('input_select.house_mode') in ['Home'] }}
-      #   attributes:
-      #     reason: >-
-      #       {{ 'Home → allowed'
-      #          if is_state('input_select.house_mode', 'Home')
-      #          else 'Away/Night → muted' }}
-
-      # - name: "Aroma lock active"
-      #   unique_id: aroma_lock_active
-      #   state: "{{ is_state('timer.aroma_lock', 'active') }}"
-      #   icon: mdi:pine-tree
+      - name: "Andrey home (final)"
+        unique_id: andrey_home_final
+        state: >-
+          {{ is_state('input_boolean.andrey_manual_presence', 'on') }}
+        delay_on:
+          seconds: 3
+        delay_off:
+          seconds: 3
 
       # 🔹 Новый сенсор: было ли движение на кухне недавно (по webhook-автомату)
       - name: "Kitchen motion (recent)"
@@ -249,56 +243,6 @@ template:
       #     {{
       #       is_state('binary_sensor.redmi_note_wi_fi', 'on')
       #     }}
-
-  - trigger:
-      - platform: state
-        entity_id:
-          - switch.presenceflag
-          - input_boolean.andrey_manual_presence
-
-    binary_sensor:
-      - name: "Andrey home (final)"
-        unique_id: andrey_home_final
-        delay_off:
-          seconds: 3
-
-        state: >-
-          {% set manual = 'input_boolean.andrey_manual_presence' %}
-          {% set presence = 'switch.presenceflag' %}
-          {% set pf = states(presence) %}
-          {% set manual_age_sec = (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) %}
-
-          {% if manual_age_sec <= 60 %}
-            {{ is_state(manual, 'on') }}
-          {% elif pf in ['on', 'off'] %}
-            {{ pf == 'off' }}   {# OFF = Home #}
-          {% else %}
-            {{ is_state(this.entity_id, 'on') }}  {# Freeze last known final state as boolean #}
-          {% endif %}
-
-        attributes:
-          source: >-
-            {% set manual = 'input_boolean.andrey_manual_presence' %}
-            {% set presence = 'switch.presenceflag' %}
-            {% set pf = states(presence) %}
-            {% set manual_age_sec = (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) %}
-
-            {% if manual_age_sec <= 60 %}
-              manual_60s
-            {% elif pf == 'off' %}
-              aqara_home
-            {% elif pf == 'on' %}
-              aqara_away
-            {% else %}
-              frozen_unavailable
-            {% endif %}
-
-          manual_age_sec: >-
-            {% set manual = 'input_boolean.andrey_manual_presence' %}
-            {{ (as_timestamp(now()) - as_timestamp(states[manual].last_changed)) | int(0) }}
-
-          presenceflag_state: >-
-            {{ states('switch.presenceflag') }}
 
 # *** *** *** *** *** *** ***
 

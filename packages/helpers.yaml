@@ -3,15 +3,6 @@
 # =========================
 
 input_select:
-  # house_mode:
-  #   name: "House mode"
-  #   options:
-  #     - Home
-  #     - Away
-  #     - Night
-  #   icon: mdi:home-account
-  #   initial: Home
-
   radio_station:
     name: Radio station (current)
     icon: mdi:radio
@@ -321,6 +312,17 @@ input_datetime:
     has_date: false
     has_time: true
     initial: "09:00:00"
+
+  presence_sanity_last_notified:
+    name: "Presence sanity last notified"
+    has_date: true
+    has_time: true
+
+  workday_home_time:
+    name: "Дом после работы (будни)"
+    has_date: false
+    has_time: true
+    initial: "19:00:00"
 
   last_kitchen_motion:
     name: Last Kitchen Motion
