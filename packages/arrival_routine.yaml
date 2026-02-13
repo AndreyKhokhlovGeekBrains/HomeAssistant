@@ -85,9 +85,9 @@ script:
       # IMPORTANT: use ready-made radio script instead of play_media
       - service: script.radio_play_current
 
-      # Radio plays for 30 minutes
+      # Radio plays for 15 minutes
       - delay:
-          minutes: 30
+          minutes: 15
 
       # Smooth radio fade-out
       - repeat:

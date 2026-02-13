@@ -66,3 +66,24 @@ script:
       - service: input_boolean.turn_off
         target:
           entity_id: input_boolean.andrey_manual_presence
+
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ceiling_light_intent
+                state: "on"
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ceiling_light_turn_off_request
+
+              - delay: "00:02:00"
+
+              - condition: state
+                entity_id: input_boolean.ceiling_light_turn_off_request
+                state: "on"
+
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.ceiling_light_turn_off_request
+
